@@ -30,7 +30,6 @@ import com.hinnka.mycamera.R
 import com.hinnka.mycamera.model.ColorPaletteState
 import com.hinnka.mycamera.model.ColorRecipeParams
 import com.hinnka.mycamera.model.RecipeParam
-import com.hinnka.mycamera.ui.camera.LutIntensitySlider
 
 /**
  * 色彩配方控制面板
@@ -168,10 +167,6 @@ fun ColorRecipePanel(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Color.Black.copy(alpha = 0.3f),
-                        RoundedCornerShape(8.dp)
-                    )
                     .padding(8.dp),
                 contentAlignment = Alignment.TopCenter
             ) {

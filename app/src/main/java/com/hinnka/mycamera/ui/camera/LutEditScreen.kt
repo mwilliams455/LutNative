@@ -1,6 +1,5 @@
 package com.hinnka.mycamera.ui.camera
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,11 +61,11 @@ fun LutEditBottomSheet(
     onPhotoParamsChange: ((ColorRecipeParams?) -> Unit)? = null,
     defaultScope: RecipeScope = RecipeScope.LUT_GLOBAL,
     editorTarget: LutEditorTarget = LutEditorTarget.CREATIVE_GLOBAL,
+    containerColor: Color = Color.Black.copy(alpha = 0.8f),
     modifier: Modifier = Modifier
 ) {
     val lutEditViewModel: LutEditViewModel = viewModel()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val backgroundColor = Color(0xFF151515)
     val coroutineScope = rememberCoroutineScope()
 
     val showScopeToggle = onPhotoParamsChange != null
@@ -125,7 +124,7 @@ fun LutEditBottomSheet(
             onDismiss()
         },
         sheetState = sheetState,
-        containerColor = backgroundColor,
+        containerColor = containerColor,
         modifier = modifier,
         scrimColor = Color.Transparent
     ) {
@@ -162,7 +161,7 @@ fun LutEditBottomSheet(
                                 count = RecipeScope.entries.size
                             ),
                             colors = SegmentedButtonDefaults.colors(
-                                activeContainerColor = Color(0xFF2A2A2A),
+                                activeContainerColor = Color(0x882A2A2A),
                                 activeContentColor = Color.White,
                                 inactiveContainerColor = Color.Transparent,
                                 inactiveContentColor = Color.White.copy(alpha = 0.5f),

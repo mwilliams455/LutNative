@@ -158,6 +158,10 @@ fun PhotoEditScreen(
     var appliedPreviewSignature by remember(currentPhoto?.id) { mutableStateOf<PreviewRenderSignature?>(null) }
     var appliedPreviewMaxEdge by remember(currentPhoto?.id) { mutableIntStateOf(0) }
 
+    val animatePaddingBottom by animateDpAsState(
+        if (showControls) 160.dp else 0.dp
+    )
+
     fun currentPreviewSignature(): PreviewRenderSignature? {
         val photo = currentPhoto ?: return null
         return PreviewRenderSignature(
@@ -294,119 +298,17 @@ fun PhotoEditScreen(
         containerColor = Color.Black,
         modifier = modifier
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
                 .animateContentSize()
         ) {
-            AnimatedVisibility(
-                visible = showControls,
-                enter = slideInVertically(initialOffsetY = { -it }) + expandVertically(expandFrom = Alignment.Top) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { -it }) + shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut()
-            ) {
-                TopAppBar(
-                    modifier = Modifier,
-                    title = {
-                        Text(
-                            text = stringResource(R.string.edit),
-                            color = Color.White
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = {
-                            viewModel.exitEditMode()
-                            onBack()
-                        }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back),
-                                tint = Color.White
-                            )
-                        }
-                    },
-                    actions = {
-                        if (isRaw) {
-                            val isRefreshing = viewModel.refreshingPhotos.contains(currentPhoto.id)
-                            val infiniteTransition = rememberInfiniteTransition(label = "refresh")
-                            val rotation by infiniteTransition.animateFloat(
-                                initialValue = 0f,
-                                targetValue = 360f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(1000, easing = LinearEasing),
-                                    repeatMode = RepeatMode.Restart
-                                ),
-                                label = "rotation"
-                            )
-
-                            IconButton(
-                                onClick = {
-                                    viewModel.refreshRawPreview(currentPhoto) { success ->
-                                        if (success) {
-                                            Toast.makeText(context, R.string.refresh_success, Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, R.string.refresh_failed, Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                enabled = !isRefreshing
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = stringResource(R.string.refresh),
-                                    tint = if (isRefreshing) Color.White.copy(alpha = 0.5f) else Color.White,
-                                    modifier = Modifier.graphicsLayer {
-                                        if (isRefreshing) {
-                                            rotationZ = rotation
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                        // 保存元数据按钮
-                        IconButton(
-                            onClick = {
-                                val currentLut = availableLuts.find { it.id == editLutId }
-                                if (currentLut?.isVip == true && !isPurchased) {
-                                    viewModel.showPaymentDialog = true
-                                    return@IconButton
-                                }
-                                isSaving = true
-                                viewModel.saveEditMetadata(currentPhoto) { success ->
-                                    isSaving = false
-                                    if (success) {
-                                        onBack()
-                                    }
-                                }
-                            },
-                            enabled = !isSaving
-                        ) {
-                            if (isSaving) {
-                                CircularProgressIndicator(
-                                    color = Color.White,
-                                    modifier = Modifier.size(24.dp),
-                                    strokeWidth = 2.dp
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = stringResource(R.string.save),
-                                    tint = AccentOrange
-                                )
-                            }
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color.Black
-                    ),
-                    windowInsets = WindowInsets(0, 0, 0, 0)
-                )
-            }
             // 预览区域
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                    .fillMaxSize()
+                    .padding(bottom = animatePaddingBottom)
                     .pointerInput(isZoomed) {
                         if (!isZoomed) {
                             var totalDrag = 0f
@@ -544,14 +446,114 @@ fun PhotoEditScreen(
                 }
             }
 
-            // 编辑控制区域
             AnimatedVisibility(
                 visible = showControls,
+                enter = slideInVertically(initialOffsetY = { -it }) + expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                TopAppBar(
+                    modifier = Modifier,
+                    title = {},
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            viewModel.exitEditMode()
+                            onBack()
+                        }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.back),
+                                tint = Color.White
+                            )
+                        }
+                    },
+                    actions = {
+                        if (isRaw) {
+                            val isRefreshing = viewModel.refreshingPhotos.contains(currentPhoto.id)
+                            val infiniteTransition = rememberInfiniteTransition(label = "refresh")
+                            val rotation by infiniteTransition.animateFloat(
+                                initialValue = 0f,
+                                targetValue = 360f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(1000, easing = LinearEasing),
+                                    repeatMode = RepeatMode.Restart
+                                ),
+                                label = "rotation"
+                            )
+
+                            IconButton(
+                                onClick = {
+                                    viewModel.refreshRawPreview(currentPhoto) { success ->
+                                        if (success) {
+                                            Toast.makeText(context, R.string.refresh_success, Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, R.string.refresh_failed, Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                enabled = !isRefreshing
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = stringResource(R.string.refresh),
+                                    tint = if (isRefreshing) Color.White.copy(alpha = 0.5f) else Color.White,
+                                    modifier = Modifier.graphicsLayer {
+                                        if (isRefreshing) {
+                                            rotationZ = rotation
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        // 保存元数据按钮
+                        IconButton(
+                            onClick = {
+                                val currentLut = availableLuts.find { it.id == editLutId }
+                                if (currentLut?.isVip == true && !isPurchased) {
+                                    viewModel.showPaymentDialog = true
+                                    return@IconButton
+                                }
+                                isSaving = true
+                                viewModel.saveEditMetadata(currentPhoto) { success ->
+                                    isSaving = false
+                                    if (success) {
+                                        onBack()
+                                    }
+                                }
+                            },
+                            enabled = !isSaving
+                        ) {
+                            if (isSaving) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = stringResource(R.string.save),
+                                    tint = AccentOrange
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    ),
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                )
+            }
+
+            // 编辑控制区域
+            AnimatedVisibility(
+                visible = showControls && !showLutEditDialog,
                 enter = slideInVertically(initialOffsetY = { it }) + expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
+                exit = slideOutVertically(targetOffsetY = { it }) + shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter)
             ) {
                 Surface(
-                    color = Color(0xFF1A1A1A),
+                    color = Color(0x151A1A1A),
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -824,7 +826,8 @@ fun PhotoEditScreen(
             },
             photoRecipeParams = editPhotoRecipeParams,
             onPhotoParamsChange = { viewModel.setPhotoRecipeParams(it) },
-            defaultScope = RecipeScope.PHOTO_LOCAL
+            defaultScope = RecipeScope.PHOTO_LOCAL,
+            containerColor = Color(0x151A1A1A)
         )
     }
 

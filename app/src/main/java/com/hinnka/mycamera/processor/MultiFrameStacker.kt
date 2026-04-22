@@ -14,10 +14,7 @@ import java.nio.ByteOrder
 import kotlin.math.roundToInt
 
 data class RawStackResult(
-    // var 以便调用方在 process() 返回后及时置 null，释放 ~288 MB（超分时），
-    // fusedBayerBuffer 需持续到 DNG 保存完成，stackedRgbBuffer 不需要。
-    var stackedRgbBuffer: ByteBuffer?,
-    val fusedBayerBuffer: ByteBuffer,
+    var fusedBayerBuffer: ByteBuffer?,
     val width: Int,
     val height: Int,
     val isNormalizedSensorData: Boolean,
@@ -275,10 +272,8 @@ object MultiFrameStacker {
                 lensShading, lensShadingWidth, lensShadingHeight
             )
             if (vulkanStackerPtr != 0L) {
-                PLog.i(TAG, "Using Vulkan RAW stacker + native LibRaw demosaic")
-                // 声明在 try 外层，以便 fallback 时可显式置 null 触发 GC
+                PLog.i(TAG, "Using Vulkan RAW stacker")
                 var vulkanFusedBayer: ByteBuffer? = null
-                var vulkanStacked: ByteBuffer? = null
                 try {
                     for (image in images) {
                         image.use {
@@ -299,39 +294,16 @@ object MultiFrameStacker {
                         return null
                     }
 
-                    vulkanStacked = try {
-                        ByteBuffer.allocateDirect(outWidth * outHeight * 6)
-                            .order(ByteOrder.nativeOrder())
-                    } catch (e: OutOfMemoryError) {
-                        PLog.e(TAG, "OOM allocating Vulkan stacked RGB buffer", e)
-                        return null
-                    }
-
                     val fusedOk = processVulkanRawStackNative(vulkanStackerPtr, vulkanFusedBayer)
                     if (fusedOk) {
-                        val demosaicOk = demosaicStackedRawWithLibRawNative(
-                            vulkanFusedBayer,
-                            outWidth,
-                            outHeight,
-                            cfaPattern,
-                            floatArrayOf(0f, 0f, 0f, 0f),
-                            65535,
-                            whiteBalanceGains,
-                            vulkanStacked
+                        vulkanFusedBayer.rewind()
+                        PLog.i(TAG, "Vulkan RAW stacking completed successfully")
+                        return RawStackResult(
+                            fusedBayerBuffer = vulkanFusedBayer,
+                            width = outWidth,
+                            height = outHeight,
+                            isNormalizedSensorData = true
                         )
-                        if (demosaicOk) {
-                            vulkanFusedBayer.rewind()
-                            vulkanStacked.rewind()
-                            PLog.i(TAG, "Vulkan RAW stacking and native LibRaw demosaic completed successfully")
-                            return RawStackResult(
-                                stackedRgbBuffer = vulkanStacked,
-                                fusedBayerBuffer = vulkanFusedBayer,
-                                width = outWidth,
-                                height = outHeight,
-                                isNormalizedSensorData = true
-                            )
-                        }
-                        PLog.w(TAG, "Vulkan fused Bayer demosaic failed, falling back to CPU")
                     } else {
                         PLog.w(TAG, "Vulkan RAW stacking failed, falling back to CPU")
                     }
@@ -341,9 +313,8 @@ object MultiFrameStacker {
                     releaseVulkanRawStackerNative(vulkanStackerPtr)
                 }
                 // fallback 到 CPU 路径前显式释放 Vulkan buffer 引用，避免与 CPU 路径的分配叠加
-                // （两者合计 outW*outH*(2+6)*2 字节，超分时可达 768 MB，极易触发 OOM）
+                // 仅 fused Bayer 持续到 DNG 保存完成。
                 vulkanFusedBayer = null
-                vulkanStacked = null
                 @Suppress("ExplicitGarbageCollectionCall")
                 System.gc()
             } else {
@@ -351,7 +322,7 @@ object MultiFrameStacker {
             }
         }
 
-        PLog.i(TAG, "Using CPU RAW stacker + native LibRaw demosaic")
+        PLog.i(TAG, "Using CPU RAW stacker")
         val stackerPtr = createRawStackerNative(width, height, useNativeSuperResolution)
         if (stackerPtr == 0L) {
             PLog.e(TAG, "Failed to create CPU raw stacker")
@@ -385,34 +356,9 @@ object MultiFrameStacker {
             }
             processRawStackWithBufferNative(stackerPtr, fusedBayerBuffer)
 
-            val stackedRgbBuffer = try {
-                ByteBuffer.allocateDirect(stackedWidth * stackedHeight * 6)
-                    .order(ByteOrder.nativeOrder())
-            } catch (e: OutOfMemoryError) {
-                PLog.e(TAG, "OOM allocating stacked RGB buffer", e)
-                return null
-            }
-
-            val success = demosaicStackedRawWithLibRawNative(
-                fusedBayerBuffer,
-                stackedWidth,
-                stackedHeight,
-                cfaPattern,
-                masterBlackLevel,
-                whiteLevel,
-                whiteBalanceGains,
-                stackedRgbBuffer
-            )
-            if (!success) {
-                PLog.e(TAG, "Native LibRaw demosaic failed")
-                return null
-            }
-
             fusedBayerBuffer.rewind()
-            stackedRgbBuffer.rewind()
-            PLog.i(TAG, "CPU RAW stacking and native LibRaw demosaic completed successfully")
+            PLog.i(TAG, "CPU RAW stacking completed successfully")
             return RawStackResult(
-                stackedRgbBuffer = stackedRgbBuffer,
                 fusedBayerBuffer = fusedBayerBuffer,
                 width = stackedWidth,
                 height = stackedHeight,
@@ -464,16 +410,6 @@ object MultiFrameStacker {
     private external fun processRawFrameNative(stackerPtr: Long, index: Int)
     private external fun clearStagedRawFramesNative(stackerPtr: Long)
     private external fun processRawStackWithBufferNative(stackerPtr: Long, outputBuffer: ByteBuffer)
-    private external fun demosaicStackedRawWithLibRawNative(
-        fusedBayerBuffer: ByteBuffer,
-        width: Int,
-        height: Int,
-        cfaPattern: Int,
-        blackLevel: FloatArray,
-        whiteLevel: Int,
-        wbGains: FloatArray,
-        outputBuffer: ByteBuffer
-    ): Boolean
     private external fun releaseRawStackerNative(stackerPtr: Long)
 
     // Vulkan RAW Stacker

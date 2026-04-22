@@ -399,10 +399,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     var showGhostPermissions by mutableStateOf(false)
 
     init {
-        StartupTrace.mark("CameraViewModel.init start")
-        StartupTrace.measure("CameraViewModel.cameraController.initialize") {
-            cameraController.initialize()
-        }
+        cameraController.initialize()
         cameraController.onImageCaptured = { image, captureInfo, characteristics, captureResult ->
             if (state.value.burstCapturing) {
                 if (burstCaptureInfo == null) {
@@ -1936,7 +1933,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         if (enabled) {
             setUseMultipleExposure(false)
             setUseMFNR(false)
-            setUseRaw(false)
         }
         cameraController.setUseMFSR(enabled)
         viewModelScope.launch {
@@ -2013,7 +2009,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun setUseRaw(useRaw: Boolean) {
         if (useRaw) {
             setUseMultipleExposure(false)
-            setUseMFSR(false)
         }
         cameraController.setUseRaw(useRaw)
         viewModelScope.launch {

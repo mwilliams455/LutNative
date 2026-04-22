@@ -1637,78 +1637,52 @@ object GalleryManager {
 
             val finalStackResult = rawStackResult ?: return@withContext
 
+            val dngWritten = trySaveStackedRawDng(
+                context = context,
+                photoId = photoId,
+                dngFile = dngFile,
+                fusedBayerBuffer = finalStackResult.fusedBayerBuffer ?: return@withContext,
+                width = finalStackResult.width,
+                height = finalStackResult.height,
+                rawMetadata = rawMetadata,
+                isNormalizedSensorData = finalStackResult.isNormalizedSensorData,
+                characteristics = characteristics,
+                captureResult = captureResult,
+                rotation = rotation,
+                thumbnail = null,
+                metadata = metadata,
+                shouldAutoSave = shouldAutoSave,
+                exportDngWithRawExport = exportDngWithRawExport
+            )
+            if (!dngWritten) {
+                PLog.e(TAG, "Failed to persist stacked RAW DNG before rendering preview")
+                return@withContext
+            }
+            finalStackResult.fusedBayerBuffer = null
+            @Suppress("ExplicitGarbageCollectionCall")
+            System.gc()
+
             val result: Bitmap = run {
-                // Construct metadata for Linear RGB
-                val finalWidth = finalStackResult.width
-                val finalHeight = finalStackResult.height
-                val linearMetadata = rawMetadata.copy(
-                    width = finalWidth,
-                    height = finalHeight,
-                    cfaPattern = RawMetadata.CFA_LINEAR_RGB,
-                    blackLevel = floatArrayOf(0f, 0f, 0f, 0f),
-                    whiteBalanceGains = floatArrayOf(1f, 1f, 1f, 1f),
-                    noiseProfile = floatArrayOf(0f, 0f),
-                    // Keep original sensor whiteLevel; stackedRgbBuffer uses a separate 16-bit encoding scale.
-                )
                 var bitmap = RawDemosaicProcessor.getInstance().process(
                     context,
-                    finalStackResult.stackedRgbBuffer ?: return@run null,
-                    finalWidth,
-                    finalHeight,
-                    finalWidth * 6, // 3 channels * 2 bytes
-                    linearMetadata,
+                    dngFile.absolutePath,
                     aspectRatio,
                     metadata.cropRegion,
                     rotation,
+                    exposureBias = exposureBias ?: 0f,
                     rawExposureCompensation = metadata.rawExposureCompensation ?: 0f,
                     rawBlackPointCorrection = metadata.rawBlackPointCorrection ?: 0f,
                     rawWhitePointCorrection = metadata.rawWhitePointCorrection ?: 0f,
                     sharpeningValue = 0.4f,
                     denoiseValue = 0.2f,
-                    chromaDenoiseValue = 0.2f,
                     rawDcpId = metadata.rawDcpId
-                )
-                // GPU 已消费 stackedRgbBuffer，立即释放引用（超分时约 288 MB）
-                // fusedBayerBuffer 仍由 finalStackResult 持有，用于后续 DNG 保存
-                finalStackResult.stackedRgbBuffer = null
-
-                if (metadata.isMirrored && bitmap != null) {
+                ) ?: return@run null
+                if (metadata.isMirrored) {
                     bitmap = BitmapUtils.flipHorizontal(bitmap)
                 }
 
                 bitmap
             } ?: return@withContext
-
-            processingScope.launch {
-                val dngWritten = trySaveStackedRawDng(
-                    context = context,
-                    photoId = photoId,
-                    dngFile = dngFile,
-                    fusedBayerBuffer = finalStackResult.fusedBayerBuffer,
-                    width = finalStackResult.width,
-                    height = finalStackResult.height,
-                    rawMetadata = rawMetadata,
-                    isNormalizedSensorData = finalStackResult.isNormalizedSensorData,
-                    characteristics = characteristics,
-                    captureResult = captureResult,
-                    rotation = rotation,
-                    thumbnail = result,
-                    metadata = metadata,
-                    shouldAutoSave = shouldAutoSave,
-                    exportDngWithRawExport = exportDngWithRawExport
-                )
-                if (!dngWritten) {
-                    try {
-                        result.let {
-                            val buffer = ByteBuffer.allocateDirect(it.width * it.height * 8)
-                            it.copyPixelsToBuffer(buffer)
-                            YuvProcessor.saveCompressedArgb(buffer, it.width, it.height, yuvFile.absolutePath)
-                        }
-                    } catch (e: Throwable) {
-                        PLog.e(TAG, "saveRawStackedPhoto saveCompressedArgb", e)
-                    }
-                }
-            }
 
             // Save Original (Stacked Result)
             FileOutputStream(tempFile).use { outputStream ->

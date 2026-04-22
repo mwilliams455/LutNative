@@ -2162,7 +2162,7 @@ class RawDemosaicProcessor {
      * 从当前 outputFramebuffer 读取像素并创建 Bitmap。
      *
      * 优先使用 PBO（Pixel Buffer Object）：像素数据存放在 GPU 内存（通过 glMapBufferRange 映射为
-     * native ByteBuffer），完全不占用 Java 堆，避免超分时 stackedRgbBuffer + fusedBayerBuffer +
+     * native ByteBuffer），完全不占用 Java 堆，避免超分时 fusedBayerBuffer +
      * pixelBuffer 同时存活导致 Java 堆 OOM（512 MB 设备上三者合计可达 768 MB）。
      * 若 PBO 分配或 map 失败则降级为直接分配 ByteBuffer。
      */

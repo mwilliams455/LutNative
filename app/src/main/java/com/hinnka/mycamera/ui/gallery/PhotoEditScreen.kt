@@ -1,5 +1,6 @@
 package com.hinnka.mycamera.ui.gallery
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
@@ -89,12 +90,14 @@ private data class PreviewRenderSignature(
     val editFocusX: Float?,
     val editFocusY: Float?,
     val showOrigin: Boolean,
-    val editTab: Int
+    val editTab: Int,
+    val isAdjusting: Boolean,
 )
 
 /**
  * 照片编辑界面
  */
+@SuppressLint("LocalContextGetResourceValueCall")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoEditScreen(
@@ -164,8 +167,6 @@ fun PhotoEditScreen(
     var isZoomed by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val refreshKey = currentPhoto?.id?.let { viewModel.photoRefreshKeys[it] } ?: 0L
-    var appliedPreviewSignature by remember(currentPhoto?.id) { mutableStateOf<PreviewRenderSignature?>(null) }
-    var appliedPreviewMaxEdge by remember(currentPhoto?.id) { mutableIntStateOf(0) }
 
     val animatePaddingBottom by animateDpAsState(
         if (showControls) 160.dp else 0.dp
@@ -193,21 +194,11 @@ fun PhotoEditScreen(
             editFocusX = editFocusX,
             editFocusY = editFocusY,
             showOrigin = showOrigin,
-            editTab = editTab
+            editTab = editTab,
+            isAdjusting = isAdjusting
         )
     }
 
-    fun applyPreviewBitmapIfNewer(signature: PreviewRenderSignature, maxEdge: Int, bitmap: Bitmap) {
-        val sameRequest = appliedPreviewSignature == signature
-        val shouldApply = !sameRequest || maxEdge >= appliedPreviewMaxEdge
-        if (!shouldApply) {
-            PLog.d("PhotoEditScreen", "Skip stale preview overwrite: photo=${signature.photoId}, maxEdge=$maxEdge, appliedMaxEdge=$appliedPreviewMaxEdge")
-            return
-        }
-        previewBitmap = bitmap
-        appliedPreviewSignature = signature
-        appliedPreviewMaxEdge = maxEdge
-    }
 
 
     LaunchedEffect(currentPhoto) {
@@ -232,59 +223,25 @@ fun PhotoEditScreen(
         }
     }
 
-    // 快速预览：conflate 保证渲染不被中断，参数变化只跳过中间帧，始终处理最新值
     LaunchedEffect(currentPhoto, refreshKey) {
         if (currentPhoto == null) return@LaunchedEffect
         snapshotFlow {
             currentPreviewSignature()
-        }
-        .filter { it != null }
-        .conflate()
-        .collectLatest { signature ->
-            isLoadingPreview = previewBitmap == null
-            val fast = withContext(Dispatchers.IO) {
-                viewModel.getPreviewBitmap(
-                    currentPhoto,
-                    useGlobalEdit = true,
-                    showOrigin = showOrigin,
-                    ignoreCrop = editTab == 3,
-                    recipeParamsOverride = previewRecipeParamsOverride,
-                    maxEdge = 800
-                )
-            }
-            if (fast != null) {
-                applyPreviewBitmapIfNewer(signature!!, 800, fast)
-                isLoadingPreview = false
-            }
-        }
-    }
-
-    // 高分辨率预览：手指抬起时触发；非 slider 的离散变化（切 LUT、切 Tab 等）100ms 防抖后触发
-    LaunchedEffect(currentPhoto, refreshKey) {
-        if (currentPhoto == null) return@LaunchedEffect
-        snapshotFlow {
-            Pair(
-                isAdjusting,
-                currentPreviewSignature()
-            )
-        }
-        .filter { (_, signature) -> signature != null }
-        .filter { (adjusting, _) -> !adjusting }  // 手指拖动时跳过，抬起后放行
-        .debounce(100)                             // 离散操作的小防抖
-        .collectLatest { (_, signature) ->
+        }.collect { _ ->
             val hires = withContext(Dispatchers.IO) {
                 viewModel.getPreviewBitmap(
                     currentPhoto,
                     useGlobalEdit = true,
                     showOrigin = showOrigin,
                     ignoreCrop = editTab == 3,
-                    recipeParamsOverride = previewRecipeParamsOverride
+                    recipeParamsOverride = previewRecipeParamsOverride,
+                    maxEdge = if (isAdjusting) 512 else 4096
                 )
             }
             if (hires != null) {
-                applyPreviewBitmapIfNewer(signature!!, 4096, hires)
+                previewBitmap = hires
+                isLoadingPreview = false
             }
-            isLoadingPreview = false
         }
     }
 
@@ -445,6 +402,7 @@ fun PhotoEditScreen(
                 // 显示预览
                 ZoomableEditImage(
                     previewBitmap = previewBitmap,
+                    isLutEditing = showLutEditDialog,
                     contentDescription = stringResource(R.string.edit),
                     onZoomChange = {
                         isZoomed = it
@@ -767,8 +725,8 @@ fun PhotoEditScreen(
                                 title = stringResource(R.string.virtual_aperture),
                                 value = editComputationalAperture ?: 2.8f,
                                 valueRange = 1.0f..16.0f,
-                                onValueChange = { isAdjusting = true; viewModel.setComputationalAperture(it) },
-                                onValueChangeFinished = { isAdjusting = false },
+                                onValueChange = { viewModel.setComputationalAperture(it) },
+                                onValueChangeFinished = { },
                                 toggleValue = aperture != null && aperture > 0f,
                                 onToggleChange = { checked ->
                                     if (checked) {
@@ -783,24 +741,24 @@ fun PhotoEditScreen(
                                 value = editSharpening,
                                 valueRange = 0f..1f,
                                 resetValue = 0f,
-                                onValueChange = { isAdjusting = true; viewModel.setSharpening(it) },
-                                onValueChangeFinished = { isAdjusting = false }
+                                onValueChange = { viewModel.setSharpening(it) },
+                                onValueChangeFinished = { }
                             )
                             SliderSettingItem(
                                 title = stringResource(R.string.settings_noise_reduction),
                                 value = editNoiseReduction,
                                 valueRange = 0f..1f,
                                 resetValue = 0f,
-                                onValueChange = { isAdjusting = true; viewModel.setNoiseReduction(it) },
-                                onValueChangeFinished = { isAdjusting = false }
+                                onValueChange = { viewModel.setNoiseReduction(it) },
+                                onValueChangeFinished = { }
                             )
                             SliderSettingItem(
                                 title = stringResource(R.string.settings_chroma_noise_reduction),
                                 value = editChromaNoiseReduction,
                                 valueRange = 0f..1f,
                                 resetValue = 0f,
-                                onValueChange = { isAdjusting = true; viewModel.setChromaNoiseReduction(it) },
-                                onValueChangeFinished = { isAdjusting = false }
+                                onValueChange = { viewModel.setChromaNoiseReduction(it) },
+                                onValueChangeFinished = { }
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                         } else if (editTab == 2) {
@@ -829,8 +787,8 @@ fun PhotoEditScreen(
                                 onRawWhitePointCorrectionChange = {
                                     viewModel.saveRawWhitePointCorrectionValue(currentPhoto, it)
                                 },
-                                onAdjustmentStart = { isAdjusting = true },
-                                onAdjustmentEnd = { isAdjusting = false },
+                                onAdjustmentStart = { },
+                                onAdjustmentEnd = { },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         } else if (editTab == 3) {
@@ -852,7 +810,10 @@ fun PhotoEditScreen(
         LutEditBottomSheet(
             lutId = editLutId!!,
             initialParams = previewRecipeParamsOverride ?: editPhotoRecipeParams ?: editLutRecipeParams,
-            onParamsPreviewChange = { isAdjusting = true; previewRecipeParamsOverride = it },
+            onParamsPreviewChange = {
+                isAdjusting = true
+                previewRecipeParamsOverride = it
+            },
             onDismiss = {
                 previewRecipeParamsOverride = null
                 isAdjusting = false
@@ -1055,6 +1016,7 @@ private fun FrameOption(
 @Composable
 private fun ZoomableEditImage(
     previewBitmap: Bitmap?,
+    isLutEditing: Boolean,
     contentDescription: String,
     onZoomChange: (isZoomed: Boolean) -> Unit = {},
     modifier: Modifier = Modifier
@@ -1066,6 +1028,12 @@ private fun ZoomableEditImage(
 
     LaunchedEffect(zoomableState.zoomableState.zoomFraction) {
         onZoomChange((zoomableState.zoomableState.zoomFraction ?: 0f) > 0.01f)
+    }
+
+    LaunchedEffect(isLutEditing) {
+        if (isLutEditing) {
+            zoomableState.zoomableState.resetZoom()
+        }
     }
 
     val model = ImageRequest.Builder(context)

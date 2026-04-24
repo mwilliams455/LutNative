@@ -7,6 +7,7 @@
 #include <android/log.h>
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 #include <sys/resource.h>
 #include <unistd.h>
 #include <vector>
@@ -185,7 +186,12 @@ VulkanImageStacker::VulkanImageStacker(uint32_t w, uint32_t h, bool sr)
     numTilesY = 1;
   }
 
-  VulkanManager::getInstance().init();
+  if (width == 0 || height == 0) {
+    throw std::runtime_error("Invalid Vulkan stacker dimensions");
+  }
+  if (!VulkanManager::getInstance().init()) {
+    throw std::runtime_error("Failed to initialize VulkanManager");
+  }
   initVulkanResources();
 }
 
@@ -198,6 +204,9 @@ void VulkanImageStacker::initVulkanResources() {
   VulkanManager &vm = VulkanManager::getInstance();
   VkDevice device = vm.getDevice();
   VkPhysicalDevice physicalDevice = vm.getPhysicalDevice();
+  if (device == VK_NULL_HANDLE || physicalDevice == VK_NULL_HANDLE) {
+    throw std::runtime_error("VulkanManager is not ready");
+  }
 
   // Create Accumulator Tiles
   uint32_t scale = enableSuperRes ? 2 : 1;

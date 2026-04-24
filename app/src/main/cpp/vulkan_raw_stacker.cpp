@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <sys/resource.h>
 #include <unistd.h>
 
@@ -204,7 +205,12 @@ VulkanRawStacker::VulkanRawStacker(uint32_t w, uint32_t h, bool enableSuperRes,
     numTilesY = 1;
   }
 
-  VulkanManager::getInstance().init();
+  if (width == 0 || height == 0) {
+    throw std::runtime_error("Invalid Vulkan raw stacker dimensions");
+  }
+  if (!VulkanManager::getInstance().init()) {
+    throw std::runtime_error("Failed to initialize VulkanManager");
+  }
   initVulkanResources();
 }
 
@@ -216,6 +222,9 @@ VulkanRawStacker::~VulkanRawStacker() {
 void VulkanRawStacker::initVulkanResources() {
   VulkanManager &vm = VulkanManager::getInstance();
   VkDevice device = vm.getDevice();
+  if (device == VK_NULL_HANDLE) {
+    throw std::runtime_error("VulkanManager is not ready");
+  }
 
   float scale = mEnableSuperRes ? mSuperResScale : 1.0f;
   uint32_t outW = (uint32_t)std::lround(width * scale);

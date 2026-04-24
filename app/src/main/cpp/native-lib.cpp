@@ -8,6 +8,7 @@
 #include <cmath>
 #include <chrono>
 #include <cstring>
+#include <exception>
 #include <fstream>
 #include <jni.h>
 #include <map>
@@ -767,8 +768,15 @@ JNIEXPORT jlong JNICALL
 Java_com_hinnka_mycamera_processor_MultiFrameStacker_createVulkanStackerNative(
     JNIEnv *env, jobject /* this */, jint width, jint height,
     jboolean enableSuperRes) {
-  auto *stacker = new VulkanImageStacker(width, height, enableSuperRes);
-  return reinterpret_cast<jlong>(stacker);
+  try {
+    auto *stacker = new VulkanImageStacker(width, height, enableSuperRes);
+    return reinterpret_cast<jlong>(stacker);
+  } catch (const std::exception &e) {
+    LOGE("createVulkanStackerNative failed: %s", e.what());
+  } catch (...) {
+    LOGE("createVulkanStackerNative failed with unknown error");
+  }
+  return 0;
 }
 
 JNIEXPORT jboolean JNICALL
@@ -947,15 +955,25 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_createVulkanRawStackerNativ
     lsc = env->GetFloatArrayElements(lensShadingMap, nullptr);
   }
 
-  auto *stacker = new VulkanRawStacker(width, height, enableSuperRes,
-                                       superResScale, bl,
-                                       (float)whiteLevel, wb, noise, lsc,
-                                       (uint32_t)lscWidth, (uint32_t)lscHeight);
+  VulkanRawStacker *stacker = nullptr;
+  try {
+    stacker = new VulkanRawStacker(width, height, enableSuperRes,
+                                   superResScale, bl, (float)whiteLevel, wb,
+                                   noise, lsc, (uint32_t)lscWidth,
+                                   (uint32_t)lscHeight);
+  } catch (const std::exception &e) {
+    LOGE("createVulkanRawStackerNative failed: %s", e.what());
+  } catch (...) {
+    LOGE("createVulkanRawStackerNative failed with unknown error");
+  }
 
   if (lsc) {
     env->ReleaseFloatArrayElements(lensShadingMap, lsc, 0);
   }
 
+  if (!stacker) {
+    return 0;
+  }
   return reinterpret_cast<jlong>(stacker);
 }
 

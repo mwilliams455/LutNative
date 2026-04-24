@@ -1,29 +1,79 @@
 #include "vulkan_manager.h"
 #include <android/log.h>
+#include <cstring>
 
 #define TAG "PLog_VulkanManager"
+
+namespace {
+
+bool hasExtension(const std::vector<VkExtensionProperties> &extensions,
+                  const char *name) {
+  for (const auto &extension : extensions) {
+    if (std::strcmp(extension.extensionName, name) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::vector<VkExtensionProperties> enumerateInstanceExtensions() {
+  uint32_t count = 0;
+  vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
+  std::vector<VkExtensionProperties> extensions(count);
+  if (count > 0) {
+    vkEnumerateInstanceExtensionProperties(nullptr, &count, extensions.data());
+  }
+  return extensions;
+}
+
+std::vector<VkExtensionProperties>
+enumerateDeviceExtensions(VkPhysicalDevice physicalDevice) {
+  uint32_t count = 0;
+  vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count,
+                                       nullptr);
+  std::vector<VkExtensionProperties> extensions(count);
+  if (count > 0) {
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &count,
+                                         extensions.data());
+  }
+  return extensions;
+}
+
+} // namespace
 
 VulkanManager::~VulkanManager() { release(); }
 
 bool VulkanManager::init() {
-  if (instance != VK_NULL_HANDLE)
+  if (instance != VK_NULL_HANDLE && physicalDevice != VK_NULL_HANDLE &&
+      device != VK_NULL_HANDLE && commandPool != VK_NULL_HANDLE) {
     return true;
+  }
+
+  if (instance != VK_NULL_HANDLE || device != VK_NULL_HANDLE ||
+      commandPool != VK_NULL_HANDLE) {
+    LOGE("Discarding incomplete VulkanManager state before re-init");
+    release();
+  }
 
   LOGI("Initializing VulkanManager...");
   if (!createInstance()) {
     LOGE("Failed to create Vulkan instance");
+    release();
     return false;
   }
   if (!pickPhysicalDevice()) {
     LOGE("Failed to pick physical device");
+    release();
     return false;
   }
   if (!createLogicalDevice()) {
     LOGE("Failed to create logical device");
+    release();
     return false;
   }
   if (!createCommandPool()) {
     LOGE("Failed to create command pool");
+    release();
     return false;
   }
 
@@ -44,6 +94,10 @@ void VulkanManager::release() {
     vkDestroyInstance(instance, nullptr);
     instance = VK_NULL_HANDLE;
   }
+  physicalDevice = VK_NULL_HANDLE;
+  computeQueue = VK_NULL_HANDLE;
+  computeQueueFamilyIndex = 0;
+  hardwareBufferSupported = false;
 }
 
 bool VulkanManager::createInstance() {
@@ -58,6 +112,14 @@ bool VulkanManager::createInstance() {
   std::vector<const char *> extensions = {
       VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
       VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME};
+
+  auto availableExtensions = enumerateInstanceExtensions();
+  for (const char *extension : extensions) {
+    if (!hasExtension(availableExtensions, extension)) {
+      LOGE("Required Vulkan instance extension is missing: %s", extension);
+      return false;
+    }
+  }
 
   VkInstanceCreateInfo createInfo{};
   createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -116,26 +178,52 @@ bool VulkanManager::createLogicalDevice() {
     return false;
 
   float queuePriority = 0.0f; // Lower priority
+  auto availableExtensions = enumerateDeviceExtensions(physicalDevice);
+  std::vector<const char *> requiredDeviceExtensions = {
+      VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
+      VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
+      VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME};
+  std::vector<const char *> optionalDeviceExtensions = {
+      VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+      VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,
+      VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME};
+
+  for (const char *extension : requiredDeviceExtensions) {
+    if (!hasExtension(availableExtensions, extension)) {
+      LOGE("Required Vulkan device extension is missing: %s", extension);
+      return false;
+    }
+  }
+
+  std::vector<const char *> deviceExtensions = requiredDeviceExtensions;
+  for (const char *extension : optionalDeviceExtensions) {
+    if (hasExtension(availableExtensions, extension)) {
+      deviceExtensions.push_back(extension);
+    } else {
+      LOGI("Optional Vulkan extension is missing, continuing without %s",
+           extension);
+    }
+  }
+
   VkDeviceQueueGlobalPriorityCreateInfoEXT globalPriorityInfo{};
-  globalPriorityInfo.sType =
-      VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT;
-  globalPriorityInfo.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_LOW_EXT;
+  const bool enableGlobalPriority =
+      hasExtension(availableExtensions, VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME);
+  if (enableGlobalPriority) {
+    globalPriorityInfo.sType =
+        VK_STRUCTURE_TYPE_DEVICE_QUEUE_GLOBAL_PRIORITY_CREATE_INFO_EXT;
+    globalPriorityInfo.globalPriority = VK_QUEUE_GLOBAL_PRIORITY_LOW_EXT;
+    deviceExtensions.push_back(VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME);
+  } else {
+    LOGI("Optional Vulkan extension is missing, continuing without %s",
+         VK_EXT_GLOBAL_PRIORITY_EXTENSION_NAME);
+  }
 
   VkDeviceQueueCreateInfo queueCreateInfo{};
   queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  queueCreateInfo.pNext = &globalPriorityInfo;
+  queueCreateInfo.pNext = enableGlobalPriority ? &globalPriorityInfo : nullptr;
   queueCreateInfo.queueFamilyIndex = computeQueueFamilyIndex;
   queueCreateInfo.queueCount = 1;
   queueCreateInfo.pQueuePriorities = &queuePriority;
-
-  std::vector<const char *> deviceExtensions = {
-      VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
-      VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME,
-      VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME,
-      VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-      VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,
-      VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-      "VK_EXT_global_priority"};
 
   VkPhysicalDeviceFeatures deviceFeatures{};
 

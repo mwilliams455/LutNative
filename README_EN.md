@@ -49,7 +49,6 @@ A professional-grade color adjustment system allowing fine-tuning across multipl
 ## 🤝 Contribution & Feedback
 Contributions of any kind are welcome! If you have questions or suggestions, please open an Issue.
 
-## 💰 Donation
-If you find this project helpful, feel free to buy the author a coffee!
+## Contact
 
-<img src="./doc/alipay_qr.webp" width="300" alt="Alipay QR Code">
+Telegram: https://t.me/photoncameraapp

@@ -17,6 +17,7 @@ import com.hinnka.mycamera.camera.AspectRatio
 import com.hinnka.mycamera.data.ContentRepository
 import com.hinnka.mycamera.hdr.GainmapResult
 import com.hinnka.mycamera.hdr.GainmapSourceSet
+import com.hinnka.mycamera.hdr.HdrGainmapStrength
 import com.hinnka.mycamera.hdr.UltraHdrWriter
 import com.hinnka.mycamera.hdr.UnifiedGainmapProducer
 import com.hinnka.mycamera.livephoto.MotionPhotoWriter
@@ -357,6 +358,7 @@ object GalleryManager {
     private fun canReuseEmbeddedGainmap(metadata: MediaMetadata): Boolean {
         return metadata.manualHdrEffectEnabled &&
                 metadata.hasEmbeddedGainmap &&
+                HdrGainmapStrength.coerce(metadata.hdrEffectStrength) == HdrGainmapStrength.DEFAULT &&
                 metadata.lutId == null &&
                 metadata.colorRecipeParams == null &&
                 metadata.sharpening == null &&
@@ -436,7 +438,10 @@ object GalleryManager {
                 return@withContext false
             }
 
-            val gainmapResult = gainmapProducer.build(ultraHdrSource)
+            val gainmapResult = gainmapProducer.build(
+                ultraHdrSource,
+                HdrGainmapStrength.coerce(resolvedMetadata.hdrEffectStrength)
+            )
             FileOutputStream(tempFile).use { outputStream ->
                 if (!writeFinalJpeg(ultraHdrSource.sdrBase, outputStream, quality, gainmapResult)) {
                     tempFile.delete()
@@ -541,7 +546,9 @@ object GalleryManager {
                 }
                 var gainmapResult: GainmapResult? = null
                 val gainmapElapsed = measureTimeMillis {
-                    gainmapResult = ultraHdrSource?.let { gainmapProducer.build(it) }
+                    gainmapResult = ultraHdrSource?.let {
+                        gainmapProducer.build(it, HdrGainmapStrength.coerce(metadata.hdrEffectStrength))
+                    }
                 }
                 PLog.d(TAG, "gainmapProducer.build took ${gainmapElapsed}ms, enabled=${gainmapResult != null}")
 

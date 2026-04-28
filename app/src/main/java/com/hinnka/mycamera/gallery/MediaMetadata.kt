@@ -9,6 +9,7 @@ import androidx.exifinterface.media.ExifInterface
 import com.hinnka.mycamera.camera.AspectRatio
 import com.hinnka.mycamera.lut.BaselineColorCorrectionTarget
 import com.hinnka.mycamera.model.ColorRecipeParams
+import com.hinnka.mycamera.hdr.HdrGainmapStrength
 import com.hinnka.mycamera.utils.PLog
 import org.json.JSONObject
 import com.hinnka.mycamera.raw.RawMetadata
@@ -90,6 +91,7 @@ data class MediaMetadata(
     val isMirrored: Boolean = false,
     val colorSpace: ColorSpace.Named = ColorSpace.Named.SRGB,
     val manualHdrEffectEnabled: Boolean = false,
+    val hdrEffectStrength: Float = HdrGainmapStrength.DEFAULT,
     val hasEmbeddedGainmap: Boolean = false,
     val dynamicRangeProfile: String? = null,
     val captureMode: String? = null,
@@ -249,6 +251,7 @@ data class MediaMetadata(
             put("isMirrored", isMirrored)
             put("colorSpace", colorSpace.name)
             put("manualHdrEffectEnabled", manualHdrEffectEnabled)
+            put("hdrEffectStrength", hdrEffectStrength.toDouble())
             put("hasEmbeddedGainmap", hasEmbeddedGainmap)
             put("dynamicRangeProfile", dynamicRangeProfile ?: JSONObject.NULL)
             put("captureMode", captureMode ?: JSONObject.NULL)
@@ -413,6 +416,9 @@ data class MediaMetadata(
                         )
                     } ?: ColorSpace.Named.SRGB,
                     manualHdrEffectEnabled = obj.optBoolean("manualHdrEffectEnabled", false),
+                    hdrEffectStrength = HdrGainmapStrength.coerce(
+                        if (obj.isNull("hdrEffectStrength")) null else obj.optDouble("hdrEffectStrength").toFloat()
+                    ),
                     hasEmbeddedGainmap = obj.optBoolean("hasEmbeddedGainmap", false),
                     dynamicRangeProfile = if (obj.isNull("dynamicRangeProfile")) null else obj.optString("dynamicRangeProfile"),
                     captureMode = if (obj.isNull("captureMode")) null else obj.optString("captureMode"),

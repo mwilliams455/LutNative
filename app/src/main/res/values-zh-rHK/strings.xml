@@ -559,6 +559,8 @@
         效果。
     </string>
     <string name="hdr_label">HDR</string>
+    <string name="hdr_strength_label">HDR 強度</string>
+    <string name="hdr_strength_update_failed">HDR 強度更新失敗</string>
     <string name="settings_raw_nlm_base_h">RAW NLM 基础强度</string>
     <string name="settings_raw_nlm_gain_factor">RAW NLM 增益响应</string>
     <string name="ai_service">AI服务</string>

@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -59,8 +60,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.isVisible
 import androidx.media3.ui.AspectRatioFrameLayout
 import coil.request.ImageRequest
+import com.hinnka.mycamera.hdr.HdrGainmapStrength
 import com.hinnka.mycamera.lut.creator.AiPhotoEvaluation
 import com.hinnka.mycamera.ui.camera.autoRotate
+import com.hinnka.mycamera.ui.components.CustomSliderThinThumb
 import com.hinnka.mycamera.ui.components.PaymentDialog
 import com.hinnka.mycamera.utils.DeviceUtil
 import com.hinnka.mycamera.viewmodel.GalleryTab
@@ -72,6 +75,7 @@ import me.saket.telephoto.zoomable.rememberZoomableState
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * 照片详情界面
@@ -102,6 +106,7 @@ fun GalleryDetailScreen(
     val isPurchased by viewModel.isPurchased.collectAsState()
     var showAiScoreSheet by remember { mutableStateOf(false) }
     var showMoreSheet by remember { mutableStateOf(false) }
+    var showHdrStrengthPanel by remember { mutableStateOf(false) }
 
     val currentColorSpace = remember { mutableStateOf<ColorSpace?>(null) }
 
@@ -208,6 +213,15 @@ fun GalleryDetailScreen(
     }
 
     val currentPhoto = photos.getOrNull(pagerState.currentPage)
+    var hdrStrengthSliderValue by remember(currentPhoto?.id) {
+        mutableFloatStateOf(currentPhoto?.let { viewModel.getManualHdrStrength(it) } ?: HdrGainmapStrength.DEFAULT)
+    }
+    LaunchedEffect(currentPhoto?.id, currentPhoto?.metadata?.hdrEffectStrength) {
+        hdrStrengthSliderValue = currentPhoto?.let { viewModel.getManualHdrStrength(it) } ?: HdrGainmapStrength.DEFAULT
+    }
+    LaunchedEffect(currentPhoto?.id) {
+        showHdrStrengthPanel = false
+    }
     val isCurrentRawPhoto = currentPhoto?.let {
         it.isImage && (viewModel.selectedTab == GalleryTab.PHOTON || it.relatedPhoto != null) && viewModel.isRaw(it.id)
     } == true
@@ -315,16 +329,18 @@ fun GalleryDetailScreen(
                             )
                         }
                     }
-                    if (currentPhoto != null && currentPhoto.isImage && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE && !DeviceUtil.isHarmonyOS) {
+                    if (
+                        currentPhoto != null &&
+                        currentPhoto.isImage &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                        !DeviceUtil.isHarmonyOS &&
+                        viewModel.canToggleManualHdrEnhance(currentPhoto)
+                    ) {
                         val hdrEnabled = viewModel.isManualHdrEnhanceEnabled(currentPhoto)
                         TextButton(
-                                    onClick = {
-                                        viewModel.toggleManualHdrEnhance(currentPhoto) { success ->
-                                            if (!success) {
-                                                Toast.makeText(context, R.string.hdr_toggle_failed, Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
+                            onClick = {
+                                showHdrStrengthPanel = !showHdrStrengthPanel
+                            },
                         ) {
                             Text(
                                 text = stringResource(R.string.hdr_label),
@@ -520,6 +536,37 @@ fun GalleryDetailScreen(
                         }
                     }
                 }
+            }
+            if (
+                showHdrStrengthPanel &&
+                currentPhoto != null &&
+                currentPhoto.isImage &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE &&
+                !DeviceUtil.isHarmonyOS &&
+                viewModel.canToggleManualHdrEnhance(currentPhoto)
+            ) {
+                HdrStrengthPanel(
+                    enabled = viewModel.isManualHdrEnhanceEnabled(currentPhoto),
+                    strength = hdrStrengthSliderValue,
+                    onEnabledChange = {
+                        viewModel.toggleManualHdrEnhance(currentPhoto) { success ->
+                            if (!success) {
+                                Toast.makeText(context, R.string.hdr_toggle_failed, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onStrengthChange = { hdrStrengthSliderValue = it },
+                    onStrengthChangeFinished = {
+                        viewModel.setManualHdrStrength(currentPhoto, hdrStrengthSliderValue) { success ->
+                            if (!success) {
+                                Toast.makeText(context, R.string.hdr_strength_update_failed, Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 12.dp)
+                )
             }
         }
     }
@@ -1007,6 +1054,80 @@ private sealed class AiEvaluationUiState {
     object Loading : AiEvaluationUiState()
     data class Success(val evaluation: AiPhotoEvaluation) : AiEvaluationUiState()
     data class Error(val error: Throwable) : AiEvaluationUiState()
+}
+
+@Composable
+private fun HdrStrengthPanel(
+    enabled: Boolean,
+    strength: Float,
+    onEnabledChange: (Boolean) -> Unit,
+    onStrengthChange: (Float) -> Unit,
+    onStrengthChangeFinished: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color(0x881E1E1E),
+        shape = RoundedCornerShape(16.dp),
+        modifier = modifier.width(200.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.hdr_label),
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onEnabledChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = AccentOrange,
+                        uncheckedThumbColor = Color.LightGray,
+                        uncheckedTrackColor = Color.DarkGray
+                    )
+                )
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.hdr_strength_label),
+                        color = Color.White.copy(alpha = 0.86f),
+                        fontSize = 9.sp,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "${(strength * 100f).roundToInt()}%",
+                        color = AccentOrange,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp
+                    )
+                }
+                CustomSliderThinThumb(
+                    value = strength,
+                    onValueChange = onStrengthChange,
+                    valueRange = HdrGainmapStrength.MIN..HdrGainmapStrength.MAX,
+                    enabled = enabled,
+                    onValueChangeFinished = onStrengthChangeFinished,
+                )
+            }
+        }
+    }
 }
 
 @Composable

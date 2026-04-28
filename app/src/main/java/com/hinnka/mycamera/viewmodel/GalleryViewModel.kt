@@ -21,6 +21,7 @@ import com.hinnka.mycamera.frame.FrameInfo
 import com.hinnka.mycamera.gallery.GalleryManager
 import com.hinnka.mycamera.gallery.MediaData
 import com.hinnka.mycamera.gallery.MediaMetadata
+import com.hinnka.mycamera.hdr.HdrGainmapStrength
 import com.hinnka.mycamera.hdr.UnifiedGainmapProducer
 import com.hinnka.mycamera.lut.creator.AiPhotoEvaluation
 import com.hinnka.mycamera.lut.LutConfig
@@ -2250,6 +2251,11 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         return metadata.manualHdrEffectEnabled
     }
 
+    fun getManualHdrStrength(photo: MediaData): Float {
+        val metadata = photo.metadata ?: photo.relatedPhoto?.metadata
+        return HdrGainmapStrength.coerce(metadata?.hdrEffectStrength)
+    }
+
     fun toggleManualHdrEnhance(photo: MediaData, onComplete: (Boolean) -> Unit = {}) {
         if (!canToggleManualHdrEnhance(photo)) {
             onComplete(false)
@@ -2295,6 +2301,58 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 onComplete(success)
             } catch (e: Exception) {
                 PLog.e(TAG, "Failed to toggle manual HDR enhance", e)
+                onComplete(false)
+            }
+        }
+    }
+
+    fun setManualHdrStrength(
+        photo: MediaData,
+        strength: Float,
+        onComplete: (Boolean) -> Unit = {}
+    ) {
+        if (!canToggleManualHdrEnhance(photo)) {
+            onComplete(false)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val context = getApplication<Application>()
+                val currentMetadata = photo.metadata ?: photo.relatedPhoto?.metadata ?: run {
+                    onComplete(false)
+                    return@launch
+                }
+                val updatedMetadata = currentMetadata.copy(
+                    manualHdrEffectEnabled = true,
+                    hdrEffectStrength = HdrGainmapStrength.coerce(strength)
+                )
+                val success = GalleryManager.saveMetadata(context, photo.id, updatedMetadata)
+                if (success) {
+                    val updatedPhotos = _photos.value.map { p ->
+                        if (p.id == photo.id) p.copy(metadata = updatedMetadata) else p
+                    }
+                    _photos.value = updatedPhotos
+                    if (_latestPhoto.value?.id == photo.id) {
+                        _latestPhoto.value = _latestPhoto.value?.copy(metadata = updatedMetadata)
+                    }
+                    if (currentPhotoMetadataId == photo.id) {
+                        currentMediaMetadata = updatedMetadata
+                    }
+                    invalidatePreviewCache(photo.id)
+                    GalleryManager.deleteDetailHdrFile(context, photo.id)
+                    GalleryManager.queueDetailHdrCacheBuild(
+                        context = context,
+                        photoId = photo.id,
+                        metadata = updatedMetadata,
+                        sharpening = updatedMetadata.sharpening ?: 0f,
+                        noiseReduction = updatedMetadata.noiseReduction ?: 0f,
+                        chromaNoiseReduction = updatedMetadata.chromaNoiseReduction ?: 0f
+                    )
+                    photoRefreshKeys[photo.id] = System.currentTimeMillis()
+                }
+                onComplete(success)
+            } catch (e: Exception) {
+                PLog.e(TAG, "Failed to update manual HDR strength", e)
                 onComplete(false)
             }
         }

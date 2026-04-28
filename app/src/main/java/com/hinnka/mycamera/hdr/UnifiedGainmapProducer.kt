@@ -8,9 +8,9 @@ class UnifiedGainmapProducer(
     )
 ) : GainmapProducer {
 
-    override suspend fun build(source: GainmapSourceSet): GainmapResult? {
+    override suspend fun build(source: GainmapSourceSet, strength: Float): GainmapResult? {
         for (producer in producers) {
-            val result = producer.build(source)
+            val result = producer.build(source, strength)
             if (result != null) return result
         }
         return null

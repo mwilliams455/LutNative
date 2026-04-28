@@ -619,7 +619,9 @@
     <string name="settings_auto_enable_hdr_for_sdr_photos">普通 JPG 默认生成 HDR</string>
     <string name="settings_auto_enable_hdr_for_sdr_photos_description">普通 JPG 拍摄和导入后，默认在详情页生成并开启 HDR 效果。</string>
     <string name="hdr_label">HDR</string>
+    <string name="hdr_strength_label">HDR 强度</string>
     <string name="hdr_toggle_failed">HDR 开关更新失败</string>
+    <string name="hdr_strength_update_failed">HDR 强度更新失败</string>
     <string name="refresh">刷新</string>
     <string name="refresh_success">预览已刷新</string>
     <string name="settings_background">背景设置</string>

@@ -641,7 +641,9 @@
     <string name="settings_auto_enable_hdr_for_sdr_photos">Generate HDR by default for standard JPG</string>
     <string name="settings_auto_enable_hdr_for_sdr_photos_description">Generate and enable estimated HDR by default in the detail page for standard JPG captures and imports.</string>
     <string name="hdr_label">HDR</string>
+    <string name="hdr_strength_label">HDR Strength</string>
     <string name="hdr_toggle_failed">Failed to update HDR switch</string>
+    <string name="hdr_strength_update_failed">Failed to update HDR strength</string>
     <string name="ghost_mode">Phantom Mode</string>
     <string name="close_ghost_mode">Close Phantom Mode</string>
     <string name="ghost_mode_dialog_title">Enable Phantom Mode</string>

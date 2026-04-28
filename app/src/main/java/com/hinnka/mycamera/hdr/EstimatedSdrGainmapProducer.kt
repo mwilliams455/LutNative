@@ -7,12 +7,12 @@ import java.nio.ByteBuffer
 
 class EstimatedSdrGainmapProducer : GainmapProducer {
 
-    override suspend fun build(source: GainmapSourceSet): GainmapResult? {
+    override suspend fun build(source: GainmapSourceSet, strength: Float): GainmapResult? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return null
         if (source.sourceKind != SourceKind.SDR_BITMAP) return null
 
         val fullHdrRatio = source.displayHdrSdrRatio.takeIf { it > 1f } ?: DEFAULT_FULL_HDR_RATIO
-        val gainmapBitmap = createGainmapBitmap(source.sdrBase, fullHdrRatio) ?: return null
+        val gainmapBitmap = createGainmapBitmap(source.sdrBase, fullHdrRatio, strength) ?: return null
         val gainmap = Gainmap(gainmapBitmap).apply {
             setRatioMin(MIN_GAIN_RATIO, MIN_GAIN_RATIO, MIN_GAIN_RATIO)
             setRatioMax(MAX_GAIN_RATIO, MAX_GAIN_RATIO, MAX_GAIN_RATIO)
@@ -30,7 +30,7 @@ class EstimatedSdrGainmapProducer : GainmapProducer {
         )
     }
 
-    private fun createGainmapBitmap(sdrBase: Bitmap, fullHdrRatio: Float): Bitmap? {
+    private fun createGainmapBitmap(sdrBase: Bitmap, fullHdrRatio: Float, strength: Float): Bitmap? {
         if (sdrBase.width <= 0 || sdrBase.height <= 0) return null
 
         val width = (sdrBase.width / DOWNSAMPLE).coerceAtLeast(1)
@@ -48,7 +48,9 @@ class EstimatedSdrGainmapProducer : GainmapProducer {
                     sample = sample,
                     fullHdrRatio = fullHdrRatio,
                     maxGainRatio = MAX_GAIN_RATIO
-                )
+                ).let {
+                    HdrGainmapStrength.applyToRatio(it, MIN_GAIN_RATIO, MAX_GAIN_RATIO, strength)
+                }
                 val encoded = ProgressiveGainmapMath.encodeRatio(ratio, MIN_GAIN_RATIO, MAX_GAIN_RATIO)
                 pixels[index++] = encoded.toByte()
             }

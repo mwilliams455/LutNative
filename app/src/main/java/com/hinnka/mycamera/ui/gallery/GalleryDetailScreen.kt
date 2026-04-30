@@ -382,7 +382,6 @@ fun GalleryDetailScreen(
                             contentColor = AccentOrange,
                             containerColor = AccentOrange.copy(alpha = 0.15f),
                             onClick = { showAiScoreSheet = true },
-                            modifier = Modifier.autoRotate()
                         )
                     }
 
@@ -396,7 +395,6 @@ fun GalleryDetailScreen(
                                 viewModel.enterEditMode()
                                 onEdit()
                             },
-                            modifier = Modifier.autoRotate()
                         )
                     }
 
@@ -407,7 +405,6 @@ fun GalleryDetailScreen(
                         contentColor = Color.Red,
                         containerColor = Color.Red.copy(alpha = 0.2f),
                         onClick = { showDeleteDialog = true },
-                        modifier = Modifier.autoRotate()
                     )
 
                     // 更多
@@ -415,7 +412,6 @@ fun GalleryDetailScreen(
                         icon = Icons.Default.MoreHoriz,
                         text = stringResource(R.string.more_options),
                         onClick = { showMoreSheet = true },
-                        modifier = Modifier.autoRotate()
                     )
                 }
             }
@@ -1174,7 +1170,8 @@ private fun GalleryActionItem(
         Box(
             modifier = Modifier
                 .size(52.dp)
-                .background(containerColor, CircleShape),
+                .background(containerColor, CircleShape)
+                .autoRotate(),
             contentAlignment = Alignment.Center
         ) {
             if (isLoading) {

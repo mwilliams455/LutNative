@@ -79,10 +79,10 @@ object OrientationObserver {
                 val nearFlat = abs(values[2]) > FLAT_AXIS_THRESHOLD
                 if (nearFlat != isNearFlat) {
                     isNearFlat = nearFlat
-                    PLog.d(
-                        TAG,
-                        "Flat state changed: isNearFlat=$isNearFlat, x=${values[0]}, y=${values[1]}, z=${values[2]}"
-                    )
+//                    PLog.d(
+//                        TAG,
+//                        "Flat state changed: isNearFlat=$isNearFlat, x=${values[0]}, y=${values[1]}, z=${values[2]}"
+//                    )
                 }
             }
 

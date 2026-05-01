@@ -45,7 +45,7 @@ class FrameRenderer(private val context: Context) {
         metadata: MediaMetadata,
     ): Bitmap {
 
-        PLog.d(TAG, "render: $metadata")
+//        PLog.d(TAG, "render: $metadata")
 
         val layout = template.layout
 

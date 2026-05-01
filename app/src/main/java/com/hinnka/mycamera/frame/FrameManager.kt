@@ -91,7 +91,7 @@ class FrameManager(private val context: Context) {
     fun loadTemplate(id: String): FrameTemplate? {
         // 先从缓存查找
         templateCache.get(id)?.let {
-            PLog.d(TAG, "Frame template loaded from cache: $id")
+//            PLog.d(TAG, "Frame template loaded from cache: $id")
             return it
         }
         

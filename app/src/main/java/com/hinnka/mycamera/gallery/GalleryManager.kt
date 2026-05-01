@@ -35,6 +35,8 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -64,6 +66,7 @@ import androidx.core.net.toUri
  */
 object GalleryManager {
     private const val TAG = "PhotoManager"
+    private val metadataMutex = Mutex()
     private const val THUMBNAIL_MAX_EDGE = 512
     private const val PHOTOS_DIR = "photos"
     private const val BURST_DIR = "burst"
@@ -941,7 +944,7 @@ object GalleryManager {
                 height = finalHeight,
                 cropRegion = effectiveCropRegion,
             )
-            metadataFile.writeText(metadataWithInfo.toJson())
+            saveMetadata(context, photoId, metadataWithInfo)
 
             if (thumbnail != null && !thumbnail.isRecycled) {
                 generateThumbnail(thumbnail, thumbnailFile)
@@ -2219,17 +2222,24 @@ object GalleryManager {
      * 加载元数据
      */
     suspend fun loadMetadata(context: Context, photoId: String): MediaMetadata? {
-        return withContext(Dispatchers.IO) {
-            try {
-                val file = getMetadataFile(context, photoId)
-                if (file.exists()) {
-                    MediaMetadata.fromJson(file.readText())
-                } else {
+        return metadataMutex.withLock {
+            withContext(Dispatchers.IO) {
+                try {
+                    val file = getMetadataFile(context, photoId)
+                    if (file.exists()) {
+                        val content = file.readText()
+                        val metadata = MediaMetadata.fromJson(content)
+                        if (metadata == null) {
+                            PLog.e(TAG, "loadMetadata: fromJson returned null for $photoId, content length=${content.length}")
+                        }
+                        metadata
+                    } else {
+                        null
+                    }
+                } catch (e: Exception) {
+                    PLog.e(TAG, "Failed to load metadata for photo: $photoId", e)
                     null
                 }
-            } catch (e: Exception) {
-                PLog.e(TAG, "Failed to load metadata for photo: $photoId", e)
-                null
             }
         }
     }
@@ -2238,15 +2248,18 @@ object GalleryManager {
      * 更新元数据
      */
     suspend fun saveMetadata(context: Context, photoId: String, metadata: MediaMetadata): Boolean {
-        return withContext(Dispatchers.IO) {
-            try {
-                val dir = getPhotoDir(context, photoId, true)
-                val file = File(dir, METADATA_FILE)
-                file.writeText(metadata.toJson())
-                true
-            } catch (e: Exception) {
-                PLog.e(TAG, "Failed to save metadata for photo: $photoId", e)
-                false
+        return metadataMutex.withLock {
+            withContext(Dispatchers.IO) {
+                try {
+                    val dir = getPhotoDir(context, photoId, true)
+                    val file = File(dir, METADATA_FILE)
+                    val json = metadata.toJson()
+                    file.writeText(json)
+                    true
+                } catch (e: Exception) {
+                    PLog.e(TAG, "Failed to save metadata for photo: $photoId", e)
+                    false
+                }
             }
         }
     }
@@ -2636,7 +2649,7 @@ object GalleryManager {
                             rotation = 0,
                             manualHdrEffectEnabled = userPrefs?.autoEnableHdr ?: false,
                         )
-                        metadataFile.writeText(updatedMetadata.toJson())
+                        saveMetadata(context, photoId, updatedMetadata)
 //                        if (updatedMetadata.computationalAperture != null) {
 //                            generateBokehPhoto(context, photoId, updatedMetadata, processedBitmap)
 //                        }
@@ -2834,7 +2847,7 @@ object GalleryManager {
             tempFile.delete()
         }
 
-        metadataFile.writeText(updatedMetadata.toJson())
+        saveMetadata(context, photoDir.name, updatedMetadata)
         generateThumbnail(photoFile, thumbnailFile)
     }
 

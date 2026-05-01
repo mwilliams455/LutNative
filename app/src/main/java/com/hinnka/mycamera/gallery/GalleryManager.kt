@@ -1188,6 +1188,7 @@ object GalleryManager {
                 writeFinalJpeg(bitmap, outputStream, photoQuality)
             }
             tempFile.renameTo(photoFile)
+            generateBokehPhoto(context, photoId, metadata, bitmap)
             val preparedUltraHdrSource = if (metadata.manualHdrEffectEnabled) {
                 photoProcessor.prepareUltraHdrSourceFromRawResult(
                     context = context,
@@ -1339,6 +1340,7 @@ object GalleryManager {
                 writeFinalJpeg(bitmap, outputStream, photoQuality)
             }
             tempFile.renameTo(photoFile)
+//            generateBokehPhoto(context, photoId, metadata, bitmap)
             queueDetailHdrCacheBuild(
                 context = context,
                 photoId = photoId,
@@ -1597,6 +1599,7 @@ object GalleryManager {
                 writeFinalJpeg(result, outputStream, photoQuality)
             }
             tempFile.renameTo(photoFile)
+            generateBokehPhoto(context, photoId, metadata, result)
             // Auto Save
             if (shouldAutoSave) {
                 val metadata = loadMetadata(context, photoId) ?: return@withContext
@@ -1755,6 +1758,7 @@ object GalleryManager {
                 writeFinalJpeg(result, outputStream, photoQuality)
             }
             tempFile.renameTo(photoFile)
+            generateBokehPhoto(context, photoId, metadata, result)
             // Auto Save
             if (shouldAutoSave) {
                 exportPhoto(
@@ -2633,9 +2637,9 @@ object GalleryManager {
                             manualHdrEffectEnabled = userPrefs?.autoEnableHdr ?: false,
                         )
                         metadataFile.writeText(updatedMetadata.toJson())
-                        if (updatedMetadata.computationalAperture != null) {
-                            generateBokehPhoto(context, photoId, updatedMetadata, processedBitmap)
-                        }
+//                        if (updatedMetadata.computationalAperture != null) {
+//                            generateBokehPhoto(context, photoId, updatedMetadata, processedBitmap)
+//                        }
 
                         processedBitmap.recycle()
                     } else {
@@ -2658,13 +2662,13 @@ object GalleryManager {
                         }
                     )
                     saveMetadata(context, photoId, updatedMetadata)
-                    if (metadata.computationalAperture != null) {
-                        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
-                        if (bitmap != null) {
-                            generateBokehPhoto(context, photoId, metadata, bitmap)
-                            bitmap.recycle()
-                        }
-                    }
+//                    if (metadata.computationalAperture != null) {
+//                        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
+//                        if (bitmap != null) {
+//                            generateBokehPhoto(context, photoId, metadata, bitmap)
+//                            bitmap.recycle()
+//                        }
+//                    }
                 }
 
                 // Check for Motion Photo after import

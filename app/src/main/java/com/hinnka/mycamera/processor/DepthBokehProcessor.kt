@@ -56,8 +56,10 @@ class DepthBokehProcessor(context: Context) {
             }
         }
 
+        val inputForBokeh = ensureArgb8888(originalImage)
+
         if (depthMap == null) {
-            depthMap = depthEstimator.estimateDepth(originalImage)
+            depthMap = depthEstimator.estimateDepth(inputForBokeh)
 
             if (depthMap != null && depthFile != null) {
                 try {
@@ -81,16 +83,32 @@ class DepthBokehProcessor(context: Context) {
                 TAG,
                 "Prepared bokeh depth: inverted=${preparedDepth.inverted} focusDepth=${preparedDepth.focusDepth} normalScore=${preparedDepth.normalScore} invertedScore=${preparedDepth.invertedScore}"
             )
-            result = processor.applyBokeh(
-                originalImage,
+            val bokehResult = processor.applyBokeh(
+                inputForBokeh,
                 preparedDepth.depthMap,
                 focusX ?: 0.5f,
                 focusY ?: 0.5f,
                 aperture
             )
+            if (inputForBokeh !== originalImage && !inputForBokeh.isRecycled) {
+                inputForBokeh.recycle()
+            }
+            result = bokehResult
         }
 
         return result ?: originalImage
+    }
+
+    /**
+     * Converts a bitmap to ARGB_8888 if it isn't already.
+     * RGBA_F16 bitmaps (from RAW processing) are not compatible with
+     * GLUtils.texImage2D used by OglBokehProcessor.
+     */
+    private fun ensureArgb8888(bitmap: Bitmap): Bitmap {
+        if (bitmap.config == Bitmap.Config.ARGB_8888) return bitmap
+        PLog.d(TAG, "Converting bitmap from ${bitmap.config} to ARGB_8888 for bokeh processing (${bitmap.width}x${bitmap.height})")
+        val converted = bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        return converted ?: bitmap
     }
 
     fun close() {

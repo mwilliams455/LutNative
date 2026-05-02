@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.media.Image
 import android.opengl.*
-import android.util.Half
 import android.util.Log
 import com.hinnka.mycamera.data.ContentRepository
 import com.hinnka.mycamera.camera.AspectRatio
@@ -22,7 +21,6 @@ import java.nio.FloatBuffer
 import java.nio.ShortBuffer
 import java.util.concurrent.Executors
 import kotlin.math.abs
-import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.sqrt
 import android.opengl.Matrix as GlMatrix
@@ -590,7 +588,9 @@ class RawDemosaicProcessor {
             val autoExposureEv = if (rawAutoExposure) {
                 resolveRawAutoExposureEv(
                     metadata = actualMetadata,
-                    rawMeteringCenterWeight = rawMeteringCenterWeight
+                    rawMeteringCenterWeight = rawMeteringCenterWeight,
+                    sourceTextureId = demosaicTextureId,
+                    dcpRenderPlan = resolvedDcpRenderPlan
                 )
             } else {
                 0f
@@ -1821,7 +1821,9 @@ class RawDemosaicProcessor {
     private fun renderCombinedPass(
         metadata: RawMetadata,
         inputTextureId: Int = demosaicTextureId,
-        dcpRenderPlan: DcpRenderPlan? = null
+        dcpRenderPlan: DcpRenderPlan? = null,
+        viewportWidth: Int = metadata.width,
+        viewportHeight: Int = metadata.height
     ) {
         val curveLut = ACR3Curve.samples()
         val outputTransform = computeWorkingToOutputTransform(ColorSpace.ProPhoto, ColorSpace.SRGB)
@@ -1831,7 +1833,7 @@ class RawDemosaicProcessor {
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, combinedFramebufferId)
         checkGlError("renderCombinedPass glBindFramebuffer")
 
-        GLES30.glViewport(0, 0, metadata.width, metadata.height)
+        GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
         checkGlError("renderCombinedPass clear")
 
@@ -2116,82 +2118,51 @@ class RawDemosaicProcessor {
 
     private fun resolveRawAutoExposureEv(
         metadata: RawMetadata,
-        rawMeteringCenterWeight: Float
+        rawMeteringCenterWeight: Float,
+        sourceTextureId: Int,
+        dcpRenderPlan: DcpRenderPlan?
     ): Float {
         val meteringWidth = minOf(metadata.width, 256).coerceAtLeast(1)
         val meteringHeight = minOf(metadata.height, 256).coerceAtLeast(1)
         return try {
-            setupOutputFramebuffer(meteringWidth, meteringHeight)
-            renderMeteringPass(
-                width = meteringWidth,
-                height = meteringHeight,
-                sourceTextureId = demosaicTextureId
+            setupCombinedFramebuffer(meteringWidth, meteringHeight)
+            renderCombinedPass(
+                metadata = metadata,
+                inputTextureId = sourceTextureId,
+                dcpRenderPlan = dcpRenderPlan,
+                viewportWidth = meteringWidth,
+                viewportHeight = meteringHeight
             )
-            val halfBuffer = ByteBuffer
-                .allocateDirect(meteringWidth * meteringHeight * 4 * 2)
+            val buffer = ByteBuffer
+                .allocateDirect(meteringWidth * meteringHeight * 4)
                 .order(ByteOrder.nativeOrder())
-                .asShortBuffer()
-            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outputFramebufferId)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, combinedFramebufferId)
             GLES30.glReadPixels(
                 0,
                 0,
                 meteringWidth,
                 meteringHeight,
                 GLES30.GL_RGBA,
-                GLES30.GL_HALF_FLOAT,
-                halfBuffer
+                GLES30.GL_UNSIGNED_BYTE,
+                buffer
             )
             checkGlError("resolveRawAutoExposureEv")
-            halfBuffer.position(0)
-            val buffer = ByteBuffer
-                .allocateDirect(meteringWidth * meteringHeight * 4 * 4)
-                .order(ByteOrder.nativeOrder())
-                .asFloatBuffer()
-            while (halfBuffer.hasRemaining()) {
-                buffer.put(Half.toFloat(halfBuffer.get()))
-            }
             buffer.position(0)
-            val gain = MeteringSystem.analyze(
-                floatBuffer = buffer,
+            val ev = MeteringSystem.analyzeRenderedExposureEv(
+                byteBuffer = buffer,
                 width = meteringWidth,
                 height = meteringHeight,
-                metadata = metadata,
                 centerWeight = rawMeteringCenterWeight
             )
-            val ev = (ln(gain) / ln(2f)).coerceIn(-2f, 4f)
             PLog.d(
                 TAG,
-                "RAW auto exposure: gain=$gain ev=$ev centerWeight=${rawMeteringCenterWeight.coerceIn(0f, 1f)}"
+                "RAW auto exposure: renderedEv=$ev centerWeight=${rawMeteringCenterWeight.coerceIn(0f, 1f)}"
             )
             ev
         } catch (e: Exception) {
             PLog.e(TAG, "Failed to resolve RAW auto exposure", e)
             0f
         }
-    }
-
-    private fun renderMeteringPass(
-        width: Int,
-        height: Int,
-        sourceTextureId: Int
-    ) {
-        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, outputFramebufferId)
-        GLES30.glViewport(0, 0, width, height)
-        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
-        GLES30.glUseProgram(passthroughProgram)
-
-        val identityMatrix = FloatArray(16)
-        GlMatrix.setIdentityM(identityMatrix, 0)
-        GLES30.glUniformMatrix4fv(
-            GLES30.glGetUniformLocation(passthroughProgram, "uTexMatrix"),
-            1, false, identityMatrix, 0
-        )
-
-        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
-        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, sourceTextureId)
-        GLES30.glUniform1i(GLES30.glGetUniformLocation(passthroughProgram, "uTexture"), 0)
-        drawQuad(passthroughProgram)
-        checkGlError("renderMeteringPass")
     }
 
     private fun resolveLinearInputLevels(

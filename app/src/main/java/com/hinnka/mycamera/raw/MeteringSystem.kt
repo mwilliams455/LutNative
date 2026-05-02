@@ -1,8 +1,11 @@
 package com.hinnka.mycamera.raw
 
 import com.hinnka.mycamera.color.TransferCurve
+import com.hinnka.mycamera.utils.PLog
+import java.nio.ByteBuffer
 import java.nio.FloatBuffer
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.pow
 
 /**
@@ -10,6 +13,8 @@ import kotlin.math.pow
  */
 object MeteringSystem {
     private const val TAG = "MeteringSystem"
+    private const val DISPLAY_TARGET_LUMA = 0.52f
+    private const val DISPLAY_HIGHLIGHT_LIMIT = 0.98f
 
     fun analyze(
         floatBuffer: FloatBuffer,
@@ -140,6 +145,101 @@ object MeteringSystem {
         val targetLumaIRE = TransferCurve.LINEAR.middleGray
         val gain = targetLumaIRE * biasMultiplier / avg
         return gain.coerceIn(0.25f, 16f)
+    }
+
+    fun analyzeRenderedExposureEv(
+        byteBuffer: ByteBuffer,
+        width: Int,
+        height: Int,
+        centerWeight: Float = 0f
+    ): Float {
+        val gridRows = 12
+        val gridCols = 12
+        val zoneSum = DoubleArray(gridRows * gridCols)
+        val zonePixCount = IntArray(gridRows * gridCols)
+        val lumas = FloatArray(width * height)
+        var validPixelCount = 0
+
+        byteBuffer.position(0)
+        for (y in 0 until height) {
+            val gy = (y.toFloat() / height * gridRows).toInt().coerceIn(0, gridRows - 1)
+            for (x in 0 until width) {
+                val gx = (x.toFloat() / width * gridCols).toInt().coerceIn(0, gridCols - 1)
+                val zi = gy * gridCols + gx
+
+                val r = (byteBuffer.get().toInt() and 0xFF) / 255f
+                val g = (byteBuffer.get().toInt() and 0xFF) / 255f
+                val b = (byteBuffer.get().toInt() and 0xFF) / 255f
+                byteBuffer.get()
+
+                val luma = r * 0.2126f + g * 0.7152f + b * 0.0722f
+                lumas[validPixelCount++] = luma
+                zoneSum[zi] += luma.toDouble()
+                zonePixCount[zi]++
+            }
+        }
+
+        if (validPixelCount == 0) {
+            return 0f
+        }
+
+        var totalWeight = 0.0
+        var weightedSum = 0.0
+        val normalizedCenterWeight = centerWeight.coerceIn(0f, 1f).toDouble()
+        val centerInfluence = normalizedCenterWeight * normalizedCenterWeight
+
+        for (i in 0 until gridRows * gridCols) {
+            if (zonePixCount[i] == 0) continue
+
+            val gy = i / gridCols
+            val gx = i % gridCols
+            val pzx = (gx + 0.5f) / gridCols
+            val pzy = (gy + 0.5f) / gridRows
+            val distSqC = (pzx - 0.5f).let { it * it } + (pzy - 0.5f).let { it * it }
+            val weight = calculateSpatialMeteringWeight(distSqC.toDouble(), centerInfluence)
+            val zoneAvg = zoneSum[i] / zonePixCount[i]
+
+            weightedSum += zoneAvg * weight
+            totalWeight += weight
+        }
+
+        if (totalWeight <= 0.0) {
+            return 0f
+        }
+
+        val averageLuma = (weightedSum / totalWeight).toFloat()
+        if (averageLuma <= 0.000001f) {
+            return 0f
+        }
+
+//        val histogram = lumas.copyOf(validPixelCount)
+//        histogram.sort()
+//        val highlightPercentile = percentile(histogram, 0.995f)
+        val meteredEv = log2(DISPLAY_TARGET_LUMA / averageLuma)
+//        val highlightLimitedEv = if (meteredEv > 0f && highlightPercentile > 0f) {
+//            minOf(meteredEv, log2(DISPLAY_HIGHLIGHT_LIMIT / highlightPercentile).coerceAtLeast(0f))
+//        } else {
+//            meteredEv
+//        }
+//        PLog.d(
+//            TAG,
+//            "Rendered metering: avg=$averageLuma p99.5=$highlightPercentile ev=$meteredEv limited=$highlightLimitedEv"
+//        )
+//        return highlightLimitedEv.coerceIn(-2f, 2f)
+        return meteredEv.coerceIn(-2f, 4f)
+    }
+
+    private fun percentile(sortedValues: FloatArray, percentile: Float): Float {
+        if (sortedValues.isEmpty()) {
+            return 0f
+        }
+
+        val index = ((sortedValues.size - 1) * percentile.coerceIn(0f, 1f)).toInt()
+        return sortedValues[index]
+    }
+
+    private fun log2(value: Float): Float {
+        return (ln(value.toDouble()) / ln(2.0)).toFloat()
     }
 
     private fun calculateSpatialMeteringWeight(distSqC: Double, centerInfluence: Double): Double {

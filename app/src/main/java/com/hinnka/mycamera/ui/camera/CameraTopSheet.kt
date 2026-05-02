@@ -136,14 +136,14 @@ fun CameraTopSheet(
                         modifier = Modifier.weight(1f)
                     )
 
-                    if (isRawSupported) {
-                        QuickSettingToggle(
-                            title = stringResource(R.string.settings_use_super_resolution),
-                            checked = useMFSR,
-                            onCheckedChange = onMFSRToggle,
-                            modifier = Modifier.weight(1f)
-                        )
+                    QuickSettingToggle(
+                        title = stringResource(R.string.settings_use_super_resolution),
+                        checked = useMFSR,
+                        onCheckedChange = onMFSRToggle,
+                        modifier = Modifier.weight(1f)
+                    )
 
+                    if (isRawSupported) {
                         QuickSettingToggle(
                             title = stringResource(R.string.settings_use_raw),
                             checked = useRaw,

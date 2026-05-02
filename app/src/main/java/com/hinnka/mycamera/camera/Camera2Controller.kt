@@ -126,6 +126,7 @@ class Camera2Controller(private val context: Context) {
     private var isFlashSupported = false
     private var maxAfRegions = 0
     private var maxAeRegions = 0
+    private var availableAfModes: IntArray = intArrayOf()
     private var availableEdgeModes: IntArray = intArrayOf()
     private var availableNoiseReductionModes: IntArray = intArrayOf()
     private var availableTonemapModes: IntArray = intArrayOf()
@@ -259,6 +260,15 @@ class Camera2Controller(private val context: Context) {
 
             // 监听对焦状态
             val afState = result.get(CaptureResult.CONTROL_AF_STATE)
+            if (afState != null && afState != lastAfState) {
+                lastAfState = afState
+                PLog.d(
+                    TAG,
+                    "AF state changed: state=$afState, mode=${request.get(CaptureRequest.CONTROL_AF_MODE)}, " +
+                            "lensState=${result.get(CaptureResult.LENS_STATE)}, " +
+                            "focusDistance=${result.get(CaptureResult.LENS_FOCUS_DISTANCE)}"
+                )
+            }
             if (_state.value.isFocusing) {
                 when (afState) {
                     CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED -> {
@@ -298,6 +308,7 @@ class Camera2Controller(private val context: Context) {
     }
 
     private var lastAeState = 0
+    private var lastAfState: Int? = null
 
     private fun logVideoCaptureStats(result: TotalCaptureResult) {
         if (!_state.value.videoRecordingState.isRecording) return
@@ -584,6 +595,8 @@ class Camera2Controller(private val context: Context) {
                 isFlashSupported = cachedCharacteristics?.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
                 maxAfRegions = cachedCharacteristics?.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) ?: 0
                 maxAeRegions = cachedCharacteristics?.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE) ?: 0
+                availableAfModes =
+                    cachedCharacteristics?.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: intArrayOf()
                 availableEdgeModes =
                     cachedCharacteristics?.get(CameraCharacteristics.EDGE_AVAILABLE_EDGE_MODES) ?: intArrayOf()
                 availableNoiseReductionModes =
@@ -648,7 +661,8 @@ class Camera2Controller(private val context: Context) {
 
                 PLog.i(
                     TAG, "Camera characteristics cached - ID: $cameraId, Level: $hardwareLevelName, " +
-                            "ManualSensor: $isManualSensorSupported, ManualPost: $isManualPostProcessingSupported, RAW: $isRawSupported, P010: $isP010Supported"
+                            "ManualSensor: $isManualSensorSupported, ManualPost: $isManualPostProcessingSupported, " +
+                            "RAW: $isRawSupported, P010: $isP010Supported, AF modes: ${availableAfModes.joinToString()}"
                 )
 
                 val selectableNrModes = buildSelectableNoiseReductionModes(availableNoiseReductionModes)
@@ -988,11 +1002,6 @@ class Camera2Controller(private val context: Context) {
                 if (captureMode == CaptureMode.VIDEO) CameraDevice.TEMPLATE_RECORD else CameraDevice.TEMPLATE_PREVIEW
             ).apply {
                 addTarget(surface)
-                // 设置连续自动对焦
-                val initialAfMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-                set(CaptureRequest.CONTROL_AF_MODE, initialAfMode)
-                // 更新 State 中的 AF 模式
-                _state.value = _state.value.copy(currentAfMode = initialAfMode)
 
                 // 应用所有相机参数（曝光、白平衡、闪光灯、变焦、色调映射）
                 applyBaseCameraSettings(this, isCapture = false)
@@ -1232,6 +1241,9 @@ class Camera2Controller(private val context: Context) {
         // 4. 变焦设置
         applyZoomSettings(builder, currentState)
 
+        // 5. 自动对焦设置
+        applyAutoFocusSettings(builder, currentState)
+
         // 6. 图像质量设置（锐化、降噪）
         applyImageQualitySettings(builder, isCapture)
 
@@ -1251,6 +1263,49 @@ class Camera2Controller(private val context: Context) {
                 CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON
             )
         }
+    }
+
+    /**
+     * 应用连续自动对焦设置。
+     *
+     * 一些设备不会很好地处理未声明支持的 AF 模式，或者在单次 AF 触发后保持旧触发状态。
+     * 这里统一按能力选择默认 AF 模式，并显式复位触发器，避免预览请求停在不稳定状态。
+     */
+    private fun applyAutoFocusSettings(builder: CaptureRequest.Builder, state: CameraState) {
+        val afMode = resolveAutoFocusMode(state.captureMode)
+
+        builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+        builder.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
+        builder.set(CaptureRequest.CONTROL_AF_MODE, afMode)
+
+        if (_state.value.currentAfMode != afMode) {
+            _state.value = _state.value.copy(currentAfMode = afMode)
+        }
+    }
+
+    private fun resolveAutoFocusMode(captureMode: CaptureMode): Int {
+        if (availableAfModes.isEmpty()) {
+            return CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+        }
+
+        val preferredModes = if (captureMode == CaptureMode.VIDEO) {
+            intArrayOf(
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO,
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE,
+                CaptureRequest.CONTROL_AF_MODE_AUTO,
+                CaptureRequest.CONTROL_AF_MODE_OFF
+            )
+        } else {
+            intArrayOf(
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE,
+                CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO,
+                CaptureRequest.CONTROL_AF_MODE_AUTO,
+                CaptureRequest.CONTROL_AF_MODE_OFF
+            )
+        }
+
+        return preferredModes.firstOrNull { availableAfModes.contains(it) }
+            ?: availableAfModes.first()
     }
 
     /**
@@ -2387,7 +2442,7 @@ class Camera2Controller(private val context: Context) {
             cameraHandler?.postDelayed({
                 previewRequestBuilder?.apply {
                     set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
-                    val afMode = CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                    val afMode = resolveAutoFocusMode(_state.value.captureMode)
                     set(CaptureRequest.CONTROL_AF_MODE, afMode)
                     _state.value = _state.value.copy(currentAfMode = afMode)
                     updatePreview()
@@ -3048,6 +3103,8 @@ class Camera2Controller(private val context: Context) {
             cachedSensorOrientation = 0
             cachedLensFacing = CameraCharacteristics.LENS_FACING_BACK
             cachedHardwareLevel = CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LIMITED
+            availableAfModes = intArrayOf()
+            lastAfState = null
 
             _state.value = if (keepVideoRecording) {
                 _state.value.copy(isPreviewActive = false)

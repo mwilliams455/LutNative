@@ -1807,6 +1807,22 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    suspend fun importRawDcps(uris: List<Uri>): List<DcpInfo> {
+        if (uris.isEmpty()) return emptyList()
+        val importedIds = withContext(Dispatchers.IO) {
+            uris.mapNotNull { uri ->
+                contentRepository.getCustomImportManager().importDcp(uri)
+            }
+        }
+        if (importedIds.isEmpty()) return emptyList()
+
+        contentRepository.refreshCustomContent()
+        val dcpById = contentRepository.getAvailableDcps().associateBy { it.id }
+        val importedDcps = importedIds.mapNotNull { dcpById[it] }
+        importedDcps.lastOrNull()?.let { editRawDcpId.value = it.id }
+        return importedDcps
+    }
+
     fun deleteRawDcp(mediaData: MediaData, dcpId: String, onComplete: (Boolean) -> Unit) {
         viewModelScope.launch {
             val success = withContext(Dispatchers.IO) {

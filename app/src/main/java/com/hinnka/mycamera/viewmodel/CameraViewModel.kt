@@ -35,6 +35,7 @@ import com.hinnka.mycamera.model.ColorRecipeParams
 import com.hinnka.mycamera.model.SafeImage
 import com.hinnka.mycamera.phantom.PhantomWidgetProvider
 import com.hinnka.mycamera.raw.ColorSpace
+import com.hinnka.mycamera.raw.DcpInfo
 import com.hinnka.mycamera.color.TransferCurve
 import com.hinnka.mycamera.raw.RawProfile
 import com.hinnka.mycamera.screencapture.PhantomPipCrop
@@ -744,6 +745,24 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 contentRepository.refreshCustomContent()
             }
             onComplete(success)
+        }
+    }
+
+    fun importRawDcps(uris: List<Uri>, onComplete: (importedDcps: List<DcpInfo>, failedCount: Int) -> Unit) {
+        viewModelScope.launch {
+            val importedIds = withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri ->
+                    contentRepository.getCustomImportManager().importDcp(uri)
+                }
+            }
+            val importedDcps = if (importedIds.isNotEmpty()) {
+                contentRepository.refreshCustomContent()
+                val dcpById = contentRepository.getAvailableDcps().associateBy { it.id }
+                importedIds.mapNotNull { dcpById[it] }
+            } else {
+                emptyList()
+            }
+            onComplete(importedDcps, uris.size - importedDcps.size)
         }
     }
 

@@ -210,6 +210,8 @@
     <string name="raw_dcp_title">RAW DCP</string>
     <string name="raw_dcp_import">Import DCP</string>
     <string name="raw_dcp_import_success">Imported DCP: %1$s</string>
+    <string name="raw_dcp_import_success_count">Imported %1$d DCP profiles</string>
+    <string name="raw_dcp_import_partial">Imported %1$d DCP profiles, %2$d failed</string>
     <string name="raw_dcp_import_failed">Failed to import DCP</string>
     <string name="raw_dcp_delete_success">Deleted DCP</string>
     <string name="raw_dcp_delete_failed">Failed to delete DCP</string>

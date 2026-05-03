@@ -242,14 +242,39 @@ fun SettingsScreen(
     }
 
     val importDcpLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        uri?.let {
-            viewModel.importRawDcp(it) { success ->
-                if (success) {
-                    android.widget.Toast.makeText(context, R.string.import_success, android.widget.Toast.LENGTH_SHORT).show()
-                } else {
-                    android.widget.Toast.makeText(context, R.string.import_failed, android.widget.Toast.LENGTH_SHORT).show()
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.importRawDcps(uris) { importedDcps, failedCount ->
+                when {
+                    importedDcps.size == 1 && failedCount == 0 -> {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.raw_dcp_import_success, importedDcps.first().getName()),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    importedDcps.isNotEmpty() && failedCount == 0 -> {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.raw_dcp_import_success_count, importedDcps.size),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    importedDcps.isNotEmpty() -> {
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.raw_dcp_import_partial, importedDcps.size, failedCount),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    else -> {
+                        android.widget.Toast.makeText(
+                            context,
+                            R.string.raw_dcp_import_failed,
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         }

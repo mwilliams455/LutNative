@@ -413,6 +413,8 @@
     <string name="settings_raw_restore_lut_description">選擇用於 RAW 色彩還原的 LUT。選擇「無」以獲得 Log 風格輸出。</string>
     <string name="settings_raw_profile">RAW 風格方案</string>
     <string name="settings_raw_profile_description">統一設定 RAW 的色彩空間、Log 曲線與還原 LUT。</string>
+    <string name="raw_dcp_import_success_count">已匯入 %1$d 個 DCP 設定檔</string>
+    <string name="raw_dcp_import_partial">已匯入 %1$d 個 DCP 設定檔，%2$d 個失敗</string>
     <string name="raw_dcp_delete_success">已刪除 DCP</string>
     <string name="raw_dcp_delete_failed">刪除 DCP 失敗</string>
     <string name="settings_dro_mode">RAW 動態範圍最佳化 (DRO)</string>

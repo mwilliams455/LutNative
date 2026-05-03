@@ -208,6 +208,8 @@
     <string name="raw_dcp_title">RAW DCP</string>
     <string name="raw_dcp_import">导入 DCP</string>
     <string name="raw_dcp_import_success">已导入 DCP：%1$s</string>
+    <string name="raw_dcp_import_success_count">已导入 %1$d 个 DCP 配置</string>
+    <string name="raw_dcp_import_partial">已导入 %1$d 个 DCP 配置，%2$d 个失败</string>
     <string name="raw_dcp_import_failed">导入 DCP 失败</string>
     <string name="raw_dcp_delete_success">已删除 DCP</string>
     <string name="raw_dcp_delete_failed">删除 DCP 失败</string>

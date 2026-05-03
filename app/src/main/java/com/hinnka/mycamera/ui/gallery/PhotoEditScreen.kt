@@ -241,17 +241,27 @@ fun PhotoEditScreen(
     }
 
     val rawDcpLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
         val photo = currentPhoto ?: return@rememberLauncherForActivityResult
         scope.launch {
-            val imported = viewModel.importRawDcp(uri)
-            if (imported != null) {
-                viewModel.saveRawDcpSelection(photo, imported.id)
-                Toast.makeText(context, context.getString(R.string.raw_dcp_import_success, imported.getName()), Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(context, context.getString(R.string.raw_dcp_import_failed), Toast.LENGTH_SHORT).show()
+            val importedDcps = viewModel.importRawDcps(uris)
+            val failedCount = uris.size - importedDcps.size
+            importedDcps.lastOrNull()?.let { viewModel.saveRawDcpSelection(photo, it.id) }
+            when {
+                importedDcps.size == 1 && failedCount == 0 -> {
+                    Toast.makeText(context, context.getString(R.string.raw_dcp_import_success, importedDcps.first().getName()), Toast.LENGTH_SHORT).show()
+                }
+                importedDcps.isNotEmpty() && failedCount == 0 -> {
+                    Toast.makeText(context, context.getString(R.string.raw_dcp_import_success_count, importedDcps.size), Toast.LENGTH_SHORT).show()
+                }
+                importedDcps.isNotEmpty() -> {
+                    Toast.makeText(context, context.getString(R.string.raw_dcp_import_partial, importedDcps.size, failedCount), Toast.LENGTH_SHORT).show()
+                }
+                else -> {
+                    Toast.makeText(context, context.getString(R.string.raw_dcp_import_failed), Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }

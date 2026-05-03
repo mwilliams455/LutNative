@@ -1199,8 +1199,13 @@ class Camera2Controller(private val context: Context) {
      *
      * @param builder 需要配置的 Builder
      * @param isCapture 是否为拍摄请求（预览时某些参数有限制）
+     * @param isRawCapture 是否为 RAW 拍摄请求（跳过 RAW 不需要的 ISP 后处理参数）
      */
-    private fun applyBaseCameraSettings(builder: CaptureRequest.Builder, isCapture: Boolean = false) {
+    private fun applyBaseCameraSettings(
+        builder: CaptureRequest.Builder,
+        isCapture: Boolean = false,
+        isRawCapture: Boolean = false
+    ) {
         val currentState = _state.value
 
         // 1. 曝光设置
@@ -1218,17 +1223,21 @@ class Camera2Controller(private val context: Context) {
         // 5. 自动对焦设置
         applyAutoFocusSettings(builder, currentState)
 
-        // 6. 图像质量设置（锐化、降噪）
-        applyImageQualitySettings(builder, isCapture)
+        if (!isRawCapture) {
+            // 6. 图像质量设置（锐化、降噪）
+            applyImageQualitySettings(builder, isCapture)
 
-        // 7. 视频 Log / 色调映射设置
-        applyToneMapSettings(builder, currentState, isCapture)
+            // 7. 视频 Log / 色调映射设置
+            applyToneMapSettings(builder, currentState, isCapture)
+        }
 
         // 8. 防抖设置
         applyStabilizationSettings(builder, currentState)
 
-        // 9. 静态拍照后处理质量设置
-        applyStillPostProcessingSettings(builder, currentState, isCapture)
+        if (!isRawCapture) {
+            // 9. 静态拍照后处理质量设置
+            applyStillPostProcessingSettings(builder, currentState, isCapture)
+        }
 
         // 10. 统计信息设置
         if (availableLensShadingMapModes.contains(CaptureRequest.STATISTICS_LENS_SHADING_MAP_MODE_ON)) {
@@ -2748,7 +2757,7 @@ class Camera2Controller(private val context: Context) {
 
                 // 应用所有相机参数（曝光、白平衡、闪光灯、变焦、色调映射）
                 // isCapture = true 确保使用完整的曝光时间（不限制长曝光）
-                applyBaseCameraSettings(this, isCapture = true)
+                applyBaseCameraSettings(this, isCapture = true, isRawCapture = isRawCapture)
 
                 // 强制将此请求的触发器设为 IDLE，防止携带预览中的触发状态
                 set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE)
@@ -3232,7 +3241,7 @@ class Camera2Controller(private val context: Context) {
                     PLog.d(TAG, "RAW burst capture uses RAW target only to avoid unstable RAW+preview still requests")
                 }
 
-                applyBaseCameraSettings(this, isCapture = true)
+                applyBaseCameraSettings(this, isCapture = true, isRawCapture = isRawCapture)
 
                 set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE)
 

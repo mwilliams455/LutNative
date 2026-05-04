@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.media.Image
 import android.opengl.*
-import android.util.Log
 import com.hinnka.mycamera.data.ContentRepository
 import com.hinnka.mycamera.camera.AspectRatio
 import com.hinnka.mycamera.utils.BitmapUtils
@@ -254,7 +253,6 @@ class RawDemosaicProcessor {
         exposureBias: Float = 0f,
         rawExposureCompensation: Float = 0f,
         rawAutoExposure: Boolean = true,
-        rawMeteringCenterWeight: Float = 0f,
         rawBlackPointCorrection: Float = 0f,
         rawWhitePointCorrection: Float = 0f,
         rawAutoWhiteBalanceEstimate: Boolean = false,
@@ -279,7 +277,6 @@ class RawDemosaicProcessor {
                 exposureBias = exposureBias,
                 rawExposureCompensation = rawExposureCompensation,
                 rawAutoExposure = rawAutoExposure,
-                rawMeteringCenterWeight = rawMeteringCenterWeight,
                 rawBlackPointCorrection = rawBlackPointCorrection,
                 rawWhitePointCorrection = rawWhitePointCorrection,
                 rawAutoWhiteBalanceEstimate = rawAutoWhiteBalanceEstimate,
@@ -341,7 +338,6 @@ class RawDemosaicProcessor {
                 rotation = rotation,
                 rawExposureCompensation = rawExposureCompensation,
                 rawAutoExposure = rawAutoExposure,
-                rawMeteringCenterWeight = rawMeteringCenterWeight,
                 rawBlackPointCorrection = rawBlackPointCorrection,
                 rawWhitePointCorrection = rawWhitePointCorrection,
                 rawAutoWhiteBalanceEstimate = rawAutoWhiteBalanceEstimate,
@@ -366,7 +362,6 @@ class RawDemosaicProcessor {
         exposureBias: Float = 0f,
         rawExposureCompensation: Float = 0f,
         rawAutoExposure: Boolean = true,
-        rawMeteringCenterWeight: Float = 0f,
         rawBlackPointCorrection: Float = 0f,
         rawWhitePointCorrection: Float = 0f,
         rawAutoWhiteBalanceEstimate: Boolean = false,
@@ -391,7 +386,6 @@ class RawDemosaicProcessor {
                 exposureBias = exposureBias,
                 rawExposureCompensation = rawExposureCompensation,
                 rawAutoExposure = rawAutoExposure,
-                rawMeteringCenterWeight = rawMeteringCenterWeight,
                 rawBlackPointCorrection = rawBlackPointCorrection,
                 rawWhitePointCorrection = rawWhitePointCorrection,
                 rawAutoWhiteBalanceEstimate = rawAutoWhiteBalanceEstimate,
@@ -425,7 +419,6 @@ class RawDemosaicProcessor {
         exposureBias: Float = 0f,
         rawExposureCompensation: Float = 0f,
         rawAutoExposure: Boolean = true,
-        rawMeteringCenterWeight: Float = 0f,
         rawBlackPointCorrection: Float = 0f,
         rawWhitePointCorrection: Float = 0f,
         rawAutoWhiteBalanceEstimate: Boolean = false,
@@ -588,7 +581,6 @@ class RawDemosaicProcessor {
             val autoExposureEv = if (rawAutoExposure) {
                 resolveRawAutoExposureEv(
                     metadata = actualMetadata,
-                    rawMeteringCenterWeight = rawMeteringCenterWeight,
                     sourceTextureId = demosaicTextureId,
                     dcpRenderPlan = resolvedDcpRenderPlan
                 )
@@ -2118,7 +2110,6 @@ class RawDemosaicProcessor {
 
     private fun resolveRawAutoExposureEv(
         metadata: RawMetadata,
-        rawMeteringCenterWeight: Float,
         sourceTextureId: Int,
         dcpRenderPlan: DcpRenderPlan?
     ): Float {
@@ -2152,11 +2143,10 @@ class RawDemosaicProcessor {
                 byteBuffer = buffer,
                 width = meteringWidth,
                 height = meteringHeight,
-                centerWeight = rawMeteringCenterWeight
             )
             PLog.d(
                 TAG,
-                "RAW auto exposure: renderedEv=$ev centerWeight=${rawMeteringCenterWeight.coerceIn(0f, 1f)}"
+                "RAW auto exposure: renderedEv=$ev"
             )
             ev
         } catch (e: Exception) {

@@ -103,7 +103,7 @@ object MeteringSystem {
 
             val normalizedCenterWeight = centerWeight.coerceIn(0f, 1f).toDouble()
             val centerInfluence = normalizedCenterWeight * normalizedCenterWeight
-            var weight = calculateSpatialMeteringWeight(distSqC.toDouble(), centerInfluence)
+            var weight = 1.0
 
             // 2. 肤色密度补偿
             val skinDensity = zoneSkinCount[i].toDouble() / zonePixCount[i]
@@ -151,7 +151,6 @@ object MeteringSystem {
         byteBuffer: ByteBuffer,
         width: Int,
         height: Int,
-        centerWeight: Float = 0f
     ): Float {
         val pixelCount = width * height
         if (pixelCount == 0) return 0f
@@ -159,15 +158,10 @@ object MeteringSystem {
         val lumas = FloatArray(pixelCount)
         var totalWeightedLuma = 0.0
         var totalWeight = 0.0
-        
-        val normalizedCenterWeight = centerWeight.coerceIn(0f, 1f).toDouble()
-        val centerInfluence = normalizedCenterWeight * normalizedCenterWeight
 
         byteBuffer.position(0)
         for (y in 0 until height) {
-            val py = (y + 0.5f) / height
             for (x in 0 until width) {
-                val px = (x + 0.5f) / width
                 
                 val r = (byteBuffer.get().toInt() and 0xFF) / 255f
                 val g = (byteBuffer.get().toInt() and 0xFF) / 255f
@@ -178,9 +172,7 @@ object MeteringSystem {
                 val idx = y * width + x
                 lumas[idx] = luma
 
-                // Calculate spatial weight for the average (subject reference)
-                val distSqC = (px - 0.5f).let { it * it } + (py - 0.5f).let { it * it }
-                val weight = calculateSpatialMeteringWeight(distSqC.toDouble(), centerInfluence)
+                val weight = 1.0
                 totalWeightedLuma += luma * weight
                 totalWeight += weight
             }
@@ -226,17 +218,6 @@ object MeteringSystem {
 
     private fun log2(value: Float): Float {
         return (ln(value.toDouble()) / ln(2.0)).toFloat()
-    }
-
-    private fun calculateSpatialMeteringWeight(distSqC: Double, centerInfluence: Double): Double {
-        if (centerInfluence <= 0.0) {
-            return 1.0
-        }
-
-        val centerSigma = 0.24 - 0.17 * centerInfluence
-        val centerBoost = 1.0 + 3.0 * centerInfluence
-        val centerWeightedWeight = exp(-distSqC / centerSigma) * centerBoost
-        return 1.0 * (1.0 - centerInfluence) + centerWeightedWeight * centerInfluence
     }
 
     private fun calculateHighlightSuppression(zoneAvg: Double, centerInfluence: Double): Double {

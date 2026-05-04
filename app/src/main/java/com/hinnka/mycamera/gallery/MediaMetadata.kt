@@ -39,7 +39,6 @@ data class MediaMetadata(
     val rawDenoiseValue: Float? = null,
     val rawExposureCompensation: Float? = null,
     val rawAutoExposure: Boolean? = null,
-    val rawMeteringCenterWeight: Float? = null,
     val rawBlackPointCorrection: Float? = null,
     val rawWhitePointCorrection: Float? = null,
     val rawAutoWhiteBalanceEstimate: Boolean? = null,
@@ -185,7 +184,6 @@ data class MediaMetadata(
             put("denoiseValue", rawDenoiseValue?.toDouble() ?: JSONObject.NULL)
             put("rawExposureCompensation", rawExposureCompensation?.toDouble() ?: JSONObject.NULL)
             put("rawAutoExposure", rawAutoExposure ?: JSONObject.NULL)
-            put("rawMeteringCenterWeight", rawMeteringCenterWeight?.toDouble() ?: JSONObject.NULL)
             put("rawBlackPointCorrection", rawBlackPointCorrection?.toDouble() ?: JSONObject.NULL)
             put("rawWhitePointCorrection", rawWhitePointCorrection?.toDouble() ?: JSONObject.NULL)
             put("rawAutoWhiteBalanceEstimate", rawAutoWhiteBalanceEstimate ?: JSONObject.NULL)
@@ -362,7 +360,6 @@ data class MediaMetadata(
                     rawDenoiseValue = if (obj.isNull("denoiseValue")) null else obj.optDouble("denoiseValue").toFloat(),
                     rawExposureCompensation = if (obj.isNull("rawExposureCompensation")) null else obj.optDouble("rawExposureCompensation").toFloat(),
                     rawAutoExposure = if (obj.isNull("rawAutoExposure")) null else obj.optBoolean("rawAutoExposure"),
-                    rawMeteringCenterWeight = if (obj.isNull("rawMeteringCenterWeight")) null else obj.optDouble("rawMeteringCenterWeight").toFloat(),
                     rawBlackPointCorrection = if (obj.isNull("rawBlackPointCorrection")) null else obj.optDouble("rawBlackPointCorrection").toFloat(),
                     rawWhitePointCorrection = if (obj.isNull("rawWhitePointCorrection")) null else obj.optDouble("rawWhitePointCorrection").toFloat(),
                     rawAutoWhiteBalanceEstimate = if (obj.isNull("rawAutoWhiteBalanceEstimate")) null else obj.optBoolean("rawAutoWhiteBalanceEstimate"),

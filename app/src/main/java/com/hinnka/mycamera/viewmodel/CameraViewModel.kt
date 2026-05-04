@@ -235,9 +235,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val rawAutoExposure: StateFlow<Boolean> = userPreferencesRepository.userPreferences
         .map { it.rawAutoExposure }
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
-    val rawMeteringCenterWeight: StateFlow<Float> = userPreferencesRepository.userPreferences
-        .map { it.rawMeteringCenterWeight }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, 0f)
     val rawBlackPointCorrection: StateFlow<Float> = userPreferencesRepository.userPreferences
         .map { it.rawBlackPointCorrection }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0f)
@@ -717,9 +714,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun setRawAutoExposure(enabled: Boolean) {
         viewModelScope.launch { userPreferencesRepository.saveRawAutoExposure(enabled) }
     }
-    fun setRawMeteringCenterWeight(value: Float) {
-        viewModelScope.launch { userPreferencesRepository.saveRawMeteringCenterWeight(value) }
-    }
     fun setRawBlackPointCorrection(value: Float) {
         viewModelScope.launch { userPreferencesRepository.saveRawBlackPointCorrection(value) }
     }
@@ -901,7 +895,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             rawDenoiseValue = userPrefs?.rawNlmNoiseFactor ?: 0f,
             rawExposureCompensation = userPrefs?.rawExposureCompensation ?: 0f,
             rawAutoExposure = userPrefs?.rawAutoExposure ?: true,
-            rawMeteringCenterWeight = userPrefs?.rawMeteringCenterWeight ?: 0f,
             rawBlackPointCorrection = userPrefs?.rawBlackPointCorrection ?: 0f,
             rawWhitePointCorrection = userPrefs?.rawWhitePointCorrection ?: 0f,
             rawAutoWhiteBalanceEstimate = userPrefs?.rawAutoWhiteBalanceEstimate ?: false,
@@ -2598,7 +2591,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 rawDenoiseValue = userPrefs?.rawNlmNoiseFactor ?: 0f,
                 rawExposureCompensation = userPrefs?.rawExposureCompensation ?: 0f,
                 rawAutoExposure = userPrefs?.rawAutoExposure ?: true,
-                rawMeteringCenterWeight = userPrefs?.rawMeteringCenterWeight ?: 0f,
                 rawBlackPointCorrection = userPrefs?.rawBlackPointCorrection ?: 0f,
                 rawWhitePointCorrection = userPrefs?.rawWhitePointCorrection ?: 0f,
                 rawAutoWhiteBalanceEstimate = userPrefs?.rawAutoWhiteBalanceEstimate ?: false,
@@ -2721,7 +2713,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 rawDenoiseValue = userPrefs?.rawNlmNoiseFactor ?: 0f,
                 rawExposureCompensation = userPrefs?.rawExposureCompensation ?: 0f,
                 rawAutoExposure = userPrefs?.rawAutoExposure ?: true,
-                rawMeteringCenterWeight = userPrefs?.rawMeteringCenterWeight ?: 0f,
                 rawBlackPointCorrection = userPrefs?.rawBlackPointCorrection ?: 0f,
                 rawWhitePointCorrection = userPrefs?.rawWhitePointCorrection ?: 0f,
                 rawAutoWhiteBalanceEstimate = userPrefs?.rawAutoWhiteBalanceEstimate ?: false,
@@ -2864,7 +2855,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 rawDenoiseValue = userPrefs?.rawNlmNoiseFactor ?: 0f,
                 rawExposureCompensation = userPrefs?.rawExposureCompensation ?: 0f,
                 rawAutoExposure = userPrefs?.rawAutoExposure ?: true,
-                rawMeteringCenterWeight = userPrefs?.rawMeteringCenterWeight ?: 0f,
                 rawBlackPointCorrection = userPrefs?.rawBlackPointCorrection ?: 0f,
                 rawWhitePointCorrection = userPrefs?.rawWhitePointCorrection ?: 0f,
                 rawAutoWhiteBalanceEstimate = userPrefs?.rawAutoWhiteBalanceEstimate ?: false,
@@ -3015,7 +3005,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             rawDenoiseValue = userPrefs?.rawNlmNoiseFactor ?: 0f,
             rawExposureCompensation = userPrefs?.rawExposureCompensation ?: 0f,
             rawAutoExposure = userPrefs?.rawAutoExposure ?: true,
-            rawMeteringCenterWeight = userPrefs?.rawMeteringCenterWeight ?: 0f,
             rawBlackPointCorrection = userPrefs?.rawBlackPointCorrection ?: 0f,
             rawWhitePointCorrection = userPrefs?.rawWhitePointCorrection ?: 0f,
             rawAutoWhiteBalanceEstimate = userPrefs?.rawAutoWhiteBalanceEstimate ?: false,

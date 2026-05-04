@@ -30,7 +30,6 @@ fun RawEditPanel(
     rawNlmNoiseFactor: Float,
     rawExposureCompensation: Float,
     rawAutoExposure: Boolean,
-    rawMeteringCenterWeight: Float,
     rawBlackPointCorrection: Float,
     rawWhitePointCorrection: Float,
     onSelectDcp: (String?) -> Unit,
@@ -39,7 +38,6 @@ fun RawEditPanel(
     onRawNlmNoiseFactorChange: (Float) -> Unit,
     onRawExposureCompensationChange: (Float) -> Unit,
     onRawAutoExposureChange: (Boolean) -> Unit,
-    onRawMeteringCenterWeightChange: (Float) -> Unit,
     onRawBlackPointCorrectionChange: (Float) -> Unit,
     onRawWhitePointCorrectionChange: (Float) -> Unit,
     onAdjustmentStart: () -> Unit,
@@ -65,19 +63,6 @@ fun RawEditPanel(
             description = stringResource(R.string.settings_raw_auto_exposure_description),
             checked = rawAutoExposure,
             onCheckedChange = onRawAutoExposureChange
-        )
-        SliderSettingItem(
-            title = stringResource(R.string.settings_raw_metering_center_weight),
-            description = stringResource(R.string.settings_raw_metering_center_weight_description),
-            value = rawMeteringCenterWeight,
-            valueRange = 0f..1f,
-            resetValue = 0f,
-            enabled = rawAutoExposure,
-            onValueChange = {
-                onAdjustmentStart()
-                onRawMeteringCenterWeightChange(it)
-            },
-            onValueChangeFinished = onAdjustmentEnd
         )
         SliderSettingItem(
             title = stringResource(R.string.settings_raw_exposure_compensation),

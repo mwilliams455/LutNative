@@ -132,15 +132,6 @@ object GalleryManager {
             ?: (ContentRepository.getInstance(context).userPreferencesRepository.userPreferences.firstOrNull()
                 ?.rawAutoExposure ?: true)
     }
-
-    private suspend fun resolveRawMeteringCenterWeight(
-        context: Context,
-        metadata: MediaMetadata?
-    ): Float {
-        return metadata?.rawMeteringCenterWeight
-            ?: (ContentRepository.getInstance(context).userPreferencesRepository.userPreferences.firstOrNull()
-                ?.rawMeteringCenterWeight ?: 0f)
-    }
     private val _photoLibraryChangedEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 16)
     val photoLibraryChangedEvents: SharedFlow<Unit> = _photoLibraryChangedEvents.asSharedFlow()
     private val hdrWorkLock = Any()
@@ -1178,7 +1169,6 @@ object GalleryManager {
                 exposureBias = exposureBias ?: 0f,
                 rawExposureCompensation = metadata.rawExposureCompensation ?: 0f,
                 rawAutoExposure = resolveRawAutoExposure(context, metadata),
-                rawMeteringCenterWeight = resolveRawMeteringCenterWeight(context, metadata),
                 rawBlackPointCorrection = metadata.rawBlackPointCorrection ?: 0f,
                 rawWhitePointCorrection = metadata.rawWhitePointCorrection ?: 0f,
                 rawAutoWhiteBalanceEstimate = resolveRawAutoWhiteBalanceEstimate(context, metadata),
@@ -1744,7 +1734,6 @@ object GalleryManager {
                     exposureBias = exposureBias ?: 0f,
                     rawExposureCompensation = metadata.rawExposureCompensation ?: 0f,
                     rawAutoExposure = resolveRawAutoExposure(context, metadata),
-                    rawMeteringCenterWeight = resolveRawMeteringCenterWeight(context, metadata),
                     rawBlackPointCorrection = metadata.rawBlackPointCorrection ?: 0f,
                     rawWhitePointCorrection = metadata.rawWhitePointCorrection ?: 0f,
                     rawAutoWhiteBalanceEstimate = resolveRawAutoWhiteBalanceEstimate(context, metadata),
@@ -2636,7 +2625,6 @@ object GalleryManager {
                         dngFile.absolutePath, null, null, 0,
                         rawExposureCompensation = updatedMetadata.rawExposureCompensation ?: 0f,
                         rawAutoExposure = resolveRawAutoExposure(context, updatedMetadata),
-                        rawMeteringCenterWeight = resolveRawMeteringCenterWeight(context, updatedMetadata),
                         rawBlackPointCorrection = updatedMetadata.rawBlackPointCorrection ?: 0f,
                         rawWhitePointCorrection = updatedMetadata.rawWhitePointCorrection ?: 0f,
                         rawAutoWhiteBalanceEstimate = resolveRawAutoWhiteBalanceEstimate(context, updatedMetadata),
@@ -2753,7 +2741,6 @@ object GalleryManager {
                     dngFile.absolutePath, metadata?.ratio, metadata?.cropRegion, 0,
                     rawExposureCompensation = updatedMetadata?.rawExposureCompensation ?: 0f,
                     rawAutoExposure = resolveRawAutoExposure(context, updatedMetadata),
-                    rawMeteringCenterWeight = resolveRawMeteringCenterWeight(context, updatedMetadata),
                     rawBlackPointCorrection = updatedMetadata?.rawBlackPointCorrection ?: 0f,
                     rawWhitePointCorrection = updatedMetadata?.rawWhitePointCorrection ?: 0f,
                     rawAutoWhiteBalanceEstimate = resolveRawAutoWhiteBalanceEstimate(context, updatedMetadata),

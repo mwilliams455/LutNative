@@ -88,7 +88,6 @@ private data class PreviewRenderSignature(
     val editRawDenoise: Float,
     val editRawExposureCompensation: Float,
     val editRawAutoExposure: Boolean,
-    val editRawMeteringCenterWeight: Float,
     val editRawBlackPointCorrection: Float,
     val editRawWhitePointCorrection: Float,
     val editRawDcpId: String?,
@@ -150,7 +149,6 @@ fun PhotoEditScreen(
     val editRawNlmNoiseFactor by viewModel.editRawDenoise.collectAsState()
     val editRawExposureCompensation by viewModel.editRawExposureCompensation.collectAsState()
     val editRawAutoExposure by viewModel.editRawAutoExposure.collectAsState()
-    val editRawMeteringCenterWeight by viewModel.editRawMeteringCenterWeight.collectAsState()
     val editRawBlackPointCorrection by viewModel.editRawBlackPointCorrection.collectAsState()
     val editRawWhitePointCorrection by viewModel.editRawWhitePointCorrection.collectAsState()
     val editRawDcpId by viewModel.editRawDcpId.collectAsState()
@@ -199,7 +197,6 @@ fun PhotoEditScreen(
             editRawDenoise = editRawNlmNoiseFactor,
             editRawExposureCompensation = editRawExposureCompensation,
             editRawAutoExposure = editRawAutoExposure,
-            editRawMeteringCenterWeight = editRawMeteringCenterWeight,
             editRawBlackPointCorrection = editRawBlackPointCorrection,
             editRawWhitePointCorrection = editRawWhitePointCorrection,
             editRawDcpId = editRawDcpId,
@@ -862,7 +859,6 @@ fun PhotoEditScreen(
                                         rawNlmNoiseFactor = editRawNlmNoiseFactor,
                                         rawExposureCompensation = editRawExposureCompensation,
                                         rawAutoExposure = editRawAutoExposure,
-                                        rawMeteringCenterWeight = editRawMeteringCenterWeight,
                                         rawBlackPointCorrection = editRawBlackPointCorrection,
                                         rawWhitePointCorrection = editRawWhitePointCorrection,
                                         onSelectDcp = { dcpId ->
@@ -888,9 +884,6 @@ fun PhotoEditScreen(
                                         },
                                         onRawAutoExposureChange = {
                                             viewModel.saveRawAutoExposureValue(currentPhoto, it)
-                                        },
-                                        onRawMeteringCenterWeightChange = {
-                                            viewModel.saveRawMeteringCenterWeightValue(currentPhoto, it)
                                         },
                                         onRawBlackPointCorrectionChange = {
                                             viewModel.saveRawBlackPointCorrectionValue(currentPhoto, it)

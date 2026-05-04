@@ -570,7 +570,7 @@ fun GalleryDetailScreen(
 
     // 删除确认对话框
     if (showDeleteDialog) {
-        var deleteExported by remember { mutableStateOf(true) }
+//        var deleteExported by remember { mutableStateOf(true) }
 
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -578,7 +578,7 @@ fun GalleryDetailScreen(
             text = {
                 Column {
                     Text(stringResource(R.string.delete_confirm))
-                    if (viewModel.selectedTab == GalleryTab.PHOTON) {
+                    /*if (viewModel.selectedTab == GalleryTab.PHOTON) {
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -599,14 +599,14 @@ fun GalleryDetailScreen(
                                 fontSize = 14.sp
                             )
                         }
-                    }
+                    }*/
                 }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         currentPhoto?.let { photo ->
-                            viewModel.requestDeletePhoto(photo, deleteExported)
+                            viewModel.requestDeletePhoto(photo, true)
                         }
                         showDeleteDialog = false
                     }

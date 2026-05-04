@@ -681,6 +681,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                     currentState.focusPoint?.let { fp ->
                         view.setFocusPoint(android.graphics.PointF(fp.first, fp.second))
                     }
+                    view.setAutoFocus(currentState.isAutoFocus)
                 }
             }
         }
@@ -1342,6 +1343,14 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
      */
     fun setVirtualApertureAuto(enabled: Boolean) {
         cameraController.setVirtualApertureEnabled(enabled)
+    }
+
+    fun setAutoFocus(auto: Boolean) {
+        cameraController.setAutoFocus(auto)
+    }
+
+    fun setFocusDistance(distance: Float) {
+        cameraController.setFocusDistance(distance)
     }
 
     /**

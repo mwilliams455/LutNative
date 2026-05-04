@@ -171,6 +171,40 @@ object Shaders {
     """.trimIndent()
 
     /**
+     * Focus Peaking Shader
+     */
+    val FRAGMENT_SHADER_FOCUS_PEAKING = """
+        #version 300 es
+        precision highp float;
+        in vec2 vTexCoord;
+        out vec4 fragColor;
+        uniform sampler2D uInputTexture;
+        uniform vec2 uTexelSize;
+        uniform float uThreshold;
+        uniform vec3 uPeakColor;
+
+        void main() {
+            vec4 color = texture(uInputTexture, vTexCoord);
+
+            // Sobel edge detection
+            float l00 = dot(texture(uInputTexture, vTexCoord + vec2(-uTexelSize.x, -uTexelSize.y)).rgb, vec3(0.299, 0.587, 0.114));
+            float l10 = dot(texture(uInputTexture, vTexCoord + vec2(0.0, -uTexelSize.y)).rgb, vec3(0.299, 0.587, 0.114));
+            float l20 = dot(texture(uInputTexture, vTexCoord + vec2(uTexelSize.x, -uTexelSize.y)).rgb, vec3(0.299, 0.587, 0.114));
+            float l01 = dot(texture(uInputTexture, vTexCoord + vec2(-uTexelSize.x, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
+            float l21 = dot(texture(uInputTexture, vTexCoord + vec2(uTexelSize.x, 0.0)).rgb, vec3(0.299, 0.587, 0.114));
+            float l02 = dot(texture(uInputTexture, vTexCoord + vec2(-uTexelSize.x, uTexelSize.y)).rgb, vec3(0.299, 0.587, 0.114));
+            float l12 = dot(texture(uInputTexture, vTexCoord + vec2(0.0, uTexelSize.y)).rgb, vec3(0.299, 0.587, 0.114));
+            float l22 = dot(texture(uInputTexture, vTexCoord + vec2(uTexelSize.x, uTexelSize.y)).rgb, vec3(0.299, 0.587, 0.114));
+
+            float gx = l00 + 2.0 * l01 + l02 - l20 - 2.0 * l21 - l22;
+            float gy = l00 + 2.0 * l10 + l20 - l02 - 2.0 * l12 - l22;
+            float edge = sqrt(gx * gx + gy * gy);
+            float peakFactor = smoothstep(uThreshold, uThreshold * 1.5, edge);
+            fragColor = vec4(mix(color.rgb, uPeakColor, peakFactor * 0.9), color.a);
+        }
+    """.trimIndent()
+
+    /**
      * 片元着色器 - 带色彩配方和 3D LUT 支持
      *
      * 处理流程：相机采样 → 色彩配方调整 → LUT处理（可选） → 输出

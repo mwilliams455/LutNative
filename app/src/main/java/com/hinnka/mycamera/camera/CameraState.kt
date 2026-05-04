@@ -74,7 +74,8 @@ data class CameraInfo(
     val hardwareLevel: Int = -1,  // 硬件支持级别
     val supportsManualProcessing: Boolean = false, // 是否支持手动处理（关闭系统锐化/降噪）
     val supportsRaw: Boolean = false, // 是否支持 RAW 格式
-    val isCustomLensId: Boolean = false // 是否来自用户手动添加的镜头 ID
+    val isCustomLensId: Boolean = false, // 是否来自用户手动添加的镜头 ID
+    val minimumFocusDistance: Float = 0f // 最小对焦距离 (diopters, 0 = infinity only)
 ) {
     /**
      * 获取镜头类型显示名称
@@ -141,6 +142,8 @@ data class CameraState(
     val virtualAperture: Float = 2.0f,  // 虚拟光圈值 (f-number)
     // 对焦
     val isAutoFocus: Boolean = true,
+    val focusDistance: Float = 0f, // 当前对焦距离 (0.0 - minimumFocusDistance)
+    val minimumFocusDistance: Float = 0f, // 最小对焦距离
     val focusPoint: Pair<Float, Float>? = null, // normalized coordinates (0-1)
     val isFocusing: Boolean = false,
     val focusSuccess: Boolean? = null,

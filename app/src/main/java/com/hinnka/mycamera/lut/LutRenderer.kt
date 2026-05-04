@@ -265,6 +265,19 @@ class LutRenderer : GLSurfaceView.Renderer {
     private var bokehFboHeight: Int = 0
     private var bokehRenderScale: Float = 0.5f // 降采样比例，0.5 代表 1/4 像素量
 
+    // Focus Peaking 实时预览资源
+    private var focusPeakingProgramId: Int = 0
+    private var uPeakInputTexLoc: Int = 0
+    private var uPeakTexelSizeLoc: Int = 0
+    private var uPeakThresholdLoc: Int = 0
+    private var uPeakColorLoc: Int = 0
+    private var aPeakPositionLoc: Int = 0
+    private var aPeakTexCoordLoc: Int = 0
+    private var focusPeakingFboId: Int = 0
+    private var focusPeakingTextureId: Int = 0
+    private var focusPeakingFboWidth: Int = 0
+    private var focusPeakingFboHeight: Int = 0
+
     // Attribute 位置
     private var aPositionLocation: Int = 0
     private var aTexCoordLocation: Int = 0
@@ -300,6 +313,9 @@ class LutRenderer : GLSurfaceView.Renderer {
     // LUT 是否启用
     @Volatile
     var lutEnabled: Boolean = false
+
+    @Volatile
+    var isAutoFocus: Boolean = true
 
     @Volatile
     var baselineLutEnabled: Boolean = false
@@ -488,7 +504,22 @@ class LutRenderer : GLSurfaceView.Renderer {
         // 通知调用者 SurfaceTexture 已准备好
         surfaceTexture?.let { onSurfaceTextureAvailable?.invoke(it) }
 
-        GlUtils.checkGlError("onSurfaceCreated")
+        // Focus Peaking Shader
+        val vs = GlUtils.compileShader(GLES30.GL_VERTEX_SHADER, Shaders.SIMPLE_VERTEX_SHADER)
+        val peakFrag = GlUtils.compileShader(GLES30.GL_FRAGMENT_SHADER, Shaders.FRAGMENT_SHADER_FOCUS_PEAKING)
+        focusPeakingProgramId = GlUtils.linkProgram(vs, peakFrag)
+        GLES30.glDeleteShader(vs)
+        GLES30.glDeleteShader(peakFrag)
+        if (focusPeakingProgramId != 0) {
+            uPeakInputTexLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uInputTexture")
+            uPeakTexelSizeLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uTexelSize")
+            uPeakThresholdLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uThreshold")
+            uPeakColorLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uPeakColor")
+            aPeakPositionLoc = GLES30.glGetAttribLocation(focusPeakingProgramId, "aPosition")
+            aPeakTexCoordLoc = GLES30.glGetAttribLocation(focusPeakingProgramId, "aTexCoord")
+        }
+
+        GlUtils.checkGlError("initShaderProgram")
     }
 
     /**
@@ -540,6 +571,11 @@ class LutRenderer : GLSurfaceView.Renderer {
         bokehTextureId = 0
         bokehFboWidth = 0
         bokehFboHeight = 0
+        focusPeakingProgramId = 0
+        focusPeakingFboId = 0
+        focusPeakingTextureId = 0
+        focusPeakingFboWidth = 0
+        focusPeakingFboHeight = 0
         lastCaptureWidth = 0
         lastCaptureHeight = 0
         viewportWidth = 0
@@ -872,18 +908,21 @@ class LutRenderer : GLSurfaceView.Renderer {
         val hasCreativeLayer = hasCreativeLayer()
         val hasDualLayer = hasBaselineLayer && hasCreativeLayer
         uploadPendingCurveTextures()
-        val needsFbo = (liveRecorder != null || activeVideoRecorder != null || hdfEnabled || bokehNeeded || hasDualLayer) &&
+        val needsFbo = (liveRecorder != null || activeVideoRecorder != null || hdfEnabled || bokehNeeded || hasDualLayer || !isAutoFocus) &&
             fboId != 0 && fboTextureId != 0
 
         if (needsFbo) {
             val identityMatrix = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
             val fullCropRect = floatArrayOf(0f, 0f, 1f, 1f)
 
+            var currentWidth = viewportWidth
+            var currentHeight = viewportHeight
+
             // 1. 渲染色彩链路到 FBO
             drawInternal(
                 fboId = fboId,
-                width = viewportWidth,
-                height = viewportHeight,
+                width = currentWidth,
+                height = currentHeight,
                 preferBaselineLayer = hasDualLayer,
                 suppressBaselineLayer = suppressBaselineLayerForVideoLog
             )
@@ -913,6 +952,8 @@ class LutRenderer : GLSurfaceView.Renderer {
                     focusPointOverride = null
                 )
                 currentTexId = stackTextureId
+                currentWidth = viewportWidth
+                currentHeight = viewportHeight
             }
 
             // 深度采集（按需，从刚刚渲染好的 FBO 纹理读取）
@@ -923,13 +964,16 @@ class LutRenderer : GLSurfaceView.Renderer {
             // 2. Bokeh 处理
             if (bokehNeeded) {
                 currentTexId = renderBokehPreview(currentTexId, viewportWidth, viewportHeight)
+                currentWidth = viewportWidth
+                currentHeight = viewportHeight
             }
 
             // 3. HDF 多 Pass 处理
             var outputTexId = currentTexId
             if (hdfEnabled) {
-                renderHdfPreviewBlur(currentTexId, viewportWidth, viewportHeight)
+                renderHdfPreviewBlur(currentTexId, currentWidth, currentHeight)
             }
+
 
             // 确保 FBO 内容已刷入显存
             GLES30.glFlush()
@@ -993,6 +1037,11 @@ class LutRenderer : GLSurfaceView.Renderer {
                         )
                     }
                 }
+            }
+
+            // 3.5. Focus Peaking (Only for preview, not for recording)
+            if (!isAutoFocus) {
+                currentTexId = renderFocusPeaking(currentTexId, currentWidth, currentHeight)
             }
 
             // 6. 显示到屏幕
@@ -2762,5 +2811,82 @@ class LutRenderer : GLSurfaceView.Renderer {
 
         GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, indexBufferId)
         GLES30.glDrawElements(GLES30.GL_TRIANGLES, 6, GLES30.GL_UNSIGNED_SHORT, 0)
+    }
+
+    private fun renderFocusPeaking(inputTextureId: Int, width: Int, height: Int): Int {
+        if (focusPeakingProgramId == 0) return inputTextureId
+
+        ensureFocusPeakingFbo(width, height)
+        if (focusPeakingFboId == 0) return inputTextureId
+
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, focusPeakingFboId)
+        GLES30.glViewport(0, 0, width, height)
+        GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+
+        GLES30.glUseProgram(focusPeakingProgramId)
+
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, inputTextureId)
+        GLES30.glUniform1i(uPeakInputTexLoc, 0)
+
+        GLES30.glUniform2f(uPeakTexelSizeLoc, 1.0f / width, 1.0f / height)
+        GLES30.glUniform1f(uPeakThresholdLoc, 0.8f)
+        GLES30.glUniform3f(uPeakColorLoc, 1.0f, 0.1f, 0.1f)
+
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, vertexBufferId)
+        GLES30.glEnableVertexAttribArray(aPeakPositionLoc)
+        GLES30.glVertexAttribPointer(aPeakPositionLoc, POSITION_COMPONENT_COUNT, GLES30.GL_FLOAT, false, 0, 0)
+
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, texCoordBufferId)
+        GLES30.glEnableVertexAttribArray(aPeakTexCoordLoc)
+        GLES30.glVertexAttribPointer(aPeakTexCoordLoc, TEXTURE_COORD_COMPONENT_COUNT, GLES30.GL_FLOAT, false, 0, 0)
+
+        GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, indexBufferId)
+        GLES30.glDrawElements(GLES30.GL_TRIANGLES, 6, GLES30.GL_UNSIGNED_SHORT, 0)
+
+        GLES30.glDisableVertexAttribArray(aPeakPositionLoc)
+        GLES30.glDisableVertexAttribArray(aPeakTexCoordLoc)
+        GLES30.glBindBuffer(GLES30.GL_ARRAY_BUFFER, 0)
+        GLES30.glBindBuffer(GLES30.GL_ELEMENT_ARRAY_BUFFER, 0)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+
+        return focusPeakingTextureId
+    }
+
+    private fun ensureFocusPeakingFbo(width: Int, height: Int) {
+        if (focusPeakingFboWidth == width && focusPeakingFboHeight == height && focusPeakingFboId != 0) return
+
+        if (focusPeakingFboId != 0) {
+            GLES30.glDeleteFramebuffers(1, intArrayOf(focusPeakingFboId), 0)
+        }
+        if (focusPeakingTextureId != 0) {
+            GLES30.glDeleteTextures(1, intArrayOf(focusPeakingTextureId), 0)
+        }
+
+        val ids = IntArray(1)
+        GLES30.glGenFramebuffers(1, ids, 0)
+        focusPeakingFboId = ids[0]
+
+        GLES30.glGenTextures(1, ids, 0)
+        focusPeakingTextureId = ids[0]
+
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, focusPeakingTextureId)
+        GLES30.glTexImage2D(
+            GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA, width, height,
+            0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, null
+        )
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+        GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, focusPeakingFboId)
+        GLES30.glFramebufferTexture2D(
+            GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0,
+            GLES30.GL_TEXTURE_2D, focusPeakingTextureId, 0
+        )
+
+        focusPeakingFboWidth = width
+        focusPeakingFboHeight = height
     }
 }

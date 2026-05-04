@@ -171,6 +171,11 @@ class CameraGLSurfaceView @JvmOverloads constructor(
         requestRender()
     }
 
+    fun setAutoFocus(auto: Boolean) {
+        renderer.isAutoFocus = auto
+        requestRender()
+    }
+
     /**
      * 获取当前 LUT 强度
      */

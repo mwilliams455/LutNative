@@ -331,6 +331,7 @@ class Camera2Controller(private val context: Context) {
             val exposureCompensation = result.get(CaptureResult.CONTROL_AE_EXPOSURE_COMPENSATION) ?: 0
             val awbMode = result.get(CaptureResult.CONTROL_AWB_MODE) ?: CameraMetadata.CONTROL_AWB_MODE_AUTO
             val aperture = result.get(CaptureResult.LENS_APERTURE)
+            val focusDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: 0f
 
             // 关键修复：只在自动曝光模式下更新 ISO 和快门速度
             // 手动模式下保持用户设置不变（因为预览使用的是限制后的曝光时间，不是用户设置的值）
@@ -340,6 +341,7 @@ class Camera2Controller(private val context: Context) {
                     ?: _state.value.shutterSpeed else _state.value.shutterSpeed,
                 awbMode = awbMode,
                 physicalAperture = aperture ?: _state.value.physicalAperture,
+                focusDistance = focusDistance
             )
         }
     }
@@ -709,7 +711,8 @@ class Camera2Controller(private val context: Context) {
                     isP010Supported = isP010Supported,
                     isHlg10Supported = isHlg10Supported,
                     availableNrModes = selectableNrModes,
-                    currentPreviewSize = previewSize
+                    currentPreviewSize = previewSize,
+                    minimumFocusDistance = cachedCharacteristics?.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
                 )
             } catch (e: Exception) {
                 PLog.e(TAG, "Failed to cache camera characteristics", e)
@@ -2345,6 +2348,42 @@ class Camera2Controller(private val context: Context) {
         }
     }
 
+    /**
+     * 设置自动对焦开关
+     */
+    fun setAutoFocus(auto: Boolean) {
+        _state.value = _state.value.copy(isAutoFocus = auto)
+        previewRequestBuilder?.apply {
+            if (auto) {
+                set(CaptureRequest.CONTROL_AF_MODE, resolveAutoFocusMode(_state.value.captureMode))
+                set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE)
+            } else {
+                set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                set(CaptureRequest.LENS_FOCUS_DISTANCE, _state.value.focusDistance)
+            }
+            updatePreview()
+        }
+    }
+
+    /**
+     * 设置对焦距离 (0.0 ~ minimumFocusDistance)
+     */
+    fun setFocusDistance(distance: Float) {
+        val minFocusDistance = _state.value.minimumFocusDistance
+        if (minFocusDistance <= 0) return
+
+        val clampedDistance = distance.coerceIn(0f, minFocusDistance)
+        _state.value = _state.value.copy(focusDistance = clampedDistance)
+
+        if (!_state.value.isAutoFocus) {
+            previewRequestBuilder?.apply {
+                set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                set(CaptureRequest.LENS_FOCUS_DISTANCE, clampedDistance)
+                updatePreview()
+            }
+        }
+    }
+
 // ==================== 对焦控制 ====================
 
     /**
@@ -2766,6 +2805,9 @@ class Camera2Controller(private val context: Context) {
                 previewRequestBuilder?.let { preview ->
                     preview.get(CaptureRequest.CONTROL_AF_MODE)?.let {
                         set(CaptureRequest.CONTROL_AF_MODE, it)
+                    }
+                    preview.get(CaptureRequest.LENS_FOCUS_DISTANCE)?.let {
+                        set(CaptureRequest.LENS_FOCUS_DISTANCE, it)
                     }
                     preview.get(CaptureRequest.CONTROL_AF_REGIONS)?.let {
                         set(CaptureRequest.CONTROL_AF_REGIONS, it)
@@ -3246,6 +3288,7 @@ class Camera2Controller(private val context: Context) {
                 set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE)
 
                 builder.get(CaptureRequest.CONTROL_AF_MODE)?.let { set(CaptureRequest.CONTROL_AF_MODE, it) }
+                builder.get(CaptureRequest.LENS_FOCUS_DISTANCE)?.let { set(CaptureRequest.LENS_FOCUS_DISTANCE, it) }
                 builder.get(CaptureRequest.CONTROL_AF_REGIONS)?.let { set(CaptureRequest.CONTROL_AF_REGIONS, it) }
                 builder.get(CaptureRequest.CONTROL_AE_REGIONS)?.let { set(CaptureRequest.CONTROL_AE_REGIONS, it) }
             }

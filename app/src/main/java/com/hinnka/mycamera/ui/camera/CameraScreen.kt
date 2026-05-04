@@ -524,32 +524,32 @@ fun CameraScreen(
                     CameraParameter.EXPOSURE_COMPENSATION -> state.exposureCompensation * state.getExposureCompensationStep()
                     CameraParameter.SHUTTER_SPEED -> state.shutterSpeed.toFloat()
                     CameraParameter.ISO -> state.iso.toFloat()
-                    CameraParameter.APERTURE -> if (state.isVirtualApertureEnabled) state.virtualAperture else state.physicalAperture
+                    CameraParameter.FOCUS -> state.focusDistance
                     CameraParameter.WHITE_BALANCE -> state.awbTemperature.toFloat()
                 },
                 minValue = when (selectedParameter) {
                     CameraParameter.EXPOSURE_COMPENSATION -> state.getExposureCompensationRange().lower * state.getExposureCompensationStep()
                     CameraParameter.SHUTTER_SPEED -> state.getShutterSpeedRange().lower.toFloat()
                     CameraParameter.ISO -> state.getIsoRange().lower.toFloat()
-                    CameraParameter.APERTURE -> 1f
+                    CameraParameter.FOCUS -> 0f
                     CameraParameter.WHITE_BALANCE -> 2000f
                 },
                 maxValue = when (selectedParameter) {
                     CameraParameter.EXPOSURE_COMPENSATION -> state.getExposureCompensationRange().upper * state.getExposureCompensationStep()
                     CameraParameter.SHUTTER_SPEED -> state.getShutterSpeedRange().upper.toFloat()
                     CameraParameter.ISO -> state.getIsoRange().upper.toFloat()
-                    CameraParameter.APERTURE -> 16.0f
+                    CameraParameter.FOCUS -> state.minimumFocusDistance
                     CameraParameter.WHITE_BALANCE -> 10000f
                 },
                 isAdjustable = when (selectedParameter) {
                     CameraParameter.EXPOSURE_COMPENSATION -> state.isAutoExposure
                     CameraParameter.SHUTTER_SPEED -> !state.isShutterSpeedAuto
                     CameraParameter.ISO -> !state.isIsoAuto
-                    CameraParameter.APERTURE -> state.isVirtualApertureEnabled
+                    CameraParameter.FOCUS -> !state.isAutoFocus
                     CameraParameter.WHITE_BALANCE -> state.awbMode != android.hardware.camera2.CameraMetadata.CONTROL_AWB_MODE_AUTO
                 },
                 showAutoButton = when (selectedParameter) {
-                    CameraParameter.SHUTTER_SPEED, CameraParameter.ISO, CameraParameter.WHITE_BALANCE, CameraParameter.APERTURE -> true
+                    CameraParameter.SHUTTER_SPEED, CameraParameter.ISO, CameraParameter.WHITE_BALANCE, CameraParameter.FOCUS -> true
                     else -> false
                 },
                 onValueChange = { value ->
@@ -557,7 +557,7 @@ fun CameraScreen(
                         CameraParameter.EXPOSURE_COMPENSATION -> viewModel.setExposureCompensation((value / state.getExposureCompensationStep()).roundToInt())
                         CameraParameter.SHUTTER_SPEED -> viewModel.setShutterSpeed(value.toLong())
                         CameraParameter.ISO -> viewModel.setIso(value.toInt())
-                        CameraParameter.APERTURE -> viewModel.setAperture(value)
+                        CameraParameter.FOCUS -> viewModel.setFocusDistance(value)
                         CameraParameter.WHITE_BALANCE -> viewModel.setAwbTemperature(value.toInt())
                     }
                 },
@@ -573,7 +573,7 @@ fun CameraScreen(
                             }
                         }
 
-                        CameraParameter.APERTURE -> viewModel.setVirtualApertureAuto(!state.isVirtualApertureEnabled)
+                        CameraParameter.FOCUS -> viewModel.setAutoFocus(!state.isAutoFocus)
                         else -> {}
                     }
                 },
@@ -734,6 +734,7 @@ fun CameraScreen(
                         videoLogProfile = state.videoConfig.logProfile,
                         isHlgInput = if (hlgHardwareCompatibilityEnabled) state.isHLG else false,
                         aperture = if (state.isVirtualApertureEnabled) state.virtualAperture else 0f,
+                        isAutoFocus = state.isAutoFocus,
                         modifier = Modifier.fillMaxSize()
                     )
 

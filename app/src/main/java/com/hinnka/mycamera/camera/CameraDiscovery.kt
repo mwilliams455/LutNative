@@ -495,7 +495,8 @@ class CameraDiscovery(private val context: Context) {
             supportsRaw = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)?.contains(
                 CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_RAW
             ) == true,
-            isCustomLensId = isCustomLensId
+            isCustomLensId = isCustomLensId,
+            minimumFocusDistance = characteristics.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
         )
     }
 

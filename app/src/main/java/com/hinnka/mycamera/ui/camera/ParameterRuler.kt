@@ -37,7 +37,7 @@ enum class CameraParameter {
     EXPOSURE_COMPENSATION,  // AE
     SHUTTER_SPEED,         // Tv
     ISO,                   // ISO
-    APERTURE,              // Av
+    FOCUS,                 // Focus
     WHITE_BALANCE          // AWB
 }
 
@@ -443,36 +443,13 @@ private fun getScaleValues(parameter: CameraParameter, minValue: Float, maxValue
                 .toList()
         }
 
-        CameraParameter.APERTURE -> {
-            listOf(
-                minValue,
-                1f,
-                1.2f,
-                1.4f,
-                1.8f,
-                2f,
-                2.4f,
-                2.8f,
-                3.2f,
-                3.5f,
-                4f,
-                4.5f,
-                5f,
-                5.6f,
-                6.3f,
-                7.1f,
-                8f,
-                9f,
-                10f,
-                11f,
-                13f,
-                14f,
-                16f,
-                maxValue
-            )
-                .toSet()
-                .map { it }
-                .filter { it in minValue..maxValue }
+        CameraParameter.FOCUS -> {
+            val steps = 20
+            val list = mutableListOf<Float>()
+            for (i in 0..steps) {
+                list.add(minValue + (maxValue - minValue) * i / steps)
+            }
+            list
         }
     }
 }
@@ -509,8 +486,13 @@ private fun formatParameterValue(parameter: CameraParameter, value: Float): Stri
             "${value.toInt()}K"
         }
 
-        CameraParameter.APERTURE -> {
-            "f/${String.format("%.1f", value)}"
+        CameraParameter.FOCUS -> {
+            if (value <= 0.01f) "∞"
+            else {
+                val meters = 1.0f / value
+                if (meters >= 1.0f) String.format("%.1fm", meters)
+                else String.format("%dcm", (meters * 100).toInt())
+            }
         }
     }
 }

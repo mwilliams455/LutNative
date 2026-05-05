@@ -50,6 +50,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.ln
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -215,6 +216,8 @@ class Camera2Controller(private val context: Context) {
     private var highlightPointSmoothedX: Float = 0.5f
     private var highlightPointSmoothedY: Float = 0.5f
     private var highlightPointInitialized = false
+    private var lastSentHighlightPointX: Float = -1f
+    private var lastSentHighlightPointY: Float = -1f
 
     // 图片拍摄回调（携带 CaptureInfo, CameraCharacteristics 和 CaptureResult 用于 RAW 处理）
     var onImageCaptured: ((SafeImage, CaptureInfo, CameraCharacteristics?, CaptureResult?) -> Unit)? = null
@@ -2239,6 +2242,11 @@ class Camera2Controller(private val context: Context) {
      */
     fun setMeteringMode(mode: MeteringMode) {
         _state.value = _state.value.copy(meteringMode = mode)
+        if (mode == MeteringMode.HIGHLIGHT_PRIORITY) {
+            highlightPointInitialized = false
+            lastSentHighlightPointX = -1f
+            lastSentHighlightPointY = -1f
+        }
         applyMeteringRegions()
         updatePreview()
         PLog.d(TAG, "测光模式: $mode")
@@ -2262,6 +2270,20 @@ class Camera2Controller(private val context: Context) {
         }
         if (_state.value.meteringMode == MeteringMode.HIGHLIGHT_PRIORITY) {
             applyMeteringRegions()
+            
+            // 计算当前平滑点与上次发送点的位移距离
+            val dist = hypot(
+                highlightPointSmoothedX.toDouble() - lastSentHighlightPointX,
+                highlightPointSmoothedY.toDouble() - lastSentHighlightPointY
+            )
+            
+            // 只有位移超过 5% (0.05) 或者这是初始化后的第一帧，才更新预览
+            // 这能有效防止测光区域频繁微动导致的画面“呼吸感”
+            if (dist > 0.05 || lastSentHighlightPointX < 0) {
+                lastSentHighlightPointX = highlightPointSmoothedX
+                lastSentHighlightPointY = highlightPointSmoothedY
+                updatePreview()
+            }
         }
     }
 
@@ -2318,7 +2340,7 @@ class Camera2Controller(private val context: Context) {
             val regionSizeFraction = when (mode) {
                 MeteringMode.SPOT -> 0.03f
                 MeteringMode.CENTER_WEIGHTED -> 0.2f
-                MeteringMode.HIGHLIGHT_PRIORITY -> 0.15f
+                MeteringMode.HIGHLIGHT_PRIORITY -> 0.08f
             }
             val regionSize = (activeRect.width() * regionSizeFraction).toInt()
 
@@ -2659,7 +2681,7 @@ class Camera2Controller(private val context: Context) {
                 val aeSizeFraction = when (_state.value.meteringMode) {
                     MeteringMode.SPOT -> 0.03f
                     MeteringMode.CENTER_WEIGHTED -> 0.2f
-                    MeteringMode.HIGHLIGHT_PRIORITY -> 0.15f
+                    MeteringMode.HIGHLIGHT_PRIORITY -> 0.08f
                     else -> 0.1f
                 }
                 val aeSize = (activeRect.width() * aeSizeFraction).toInt()

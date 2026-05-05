@@ -21,6 +21,7 @@ import android.view.Gravity
 import android.view.WindowManager
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -896,7 +897,7 @@ class PhantomService(val context: Context) : LifecycleOwner, SavedStateRegistryO
                                                         ),
                                                         maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis,
-                                                        modifier = Modifier.weight(1f)
+                                                        modifier = Modifier.weight(1f).basicMarquee()
                                                     )
                                                     if (isSelected) {
                                                         Icon(

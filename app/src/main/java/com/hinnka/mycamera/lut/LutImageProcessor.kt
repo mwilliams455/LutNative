@@ -69,6 +69,14 @@ class LutImageProcessor {
     private var hdfWidth = 0
     private var hdfHeight = 0
 
+    // Halation (胶片红晕) 效果资源
+    private var halationExtractBlurHProgram = 0
+    private var halationBlurVProgram = 0
+    private var halationTexId = IntArray(2)
+    private var halationFboId = IntArray(2)
+    private var halationWidth = 0
+    private var halationHeight = 0
+
     private var isInitialized = false
 
     // Uniform 位置
@@ -237,6 +245,7 @@ class LutImageProcessor {
         // 提取色彩配方参数
         val effectiveRecipeParams = colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
+        val redHalation = effectiveRecipeParams?.redHalation ?: 0f
 
         // 后期处理参数
         val sharpening: Float = sharpeningValue
@@ -269,6 +278,10 @@ class LutImageProcessor {
         // HDF 光晕效果预处理（在主 shader 之前，需要模糊的光晕纹理）
         if (halation > 0f) {
             renderHDFBlur(inputTexId, width, height, halation)
+            currentCoroutineContext().ensureActive()
+        }
+        if (redHalation > 0f) {
+            renderHalationBlur(inputTexId, width, height, redHalation)
             currentCoroutineContext().ensureActive()
         }
 
@@ -376,6 +389,7 @@ class LutImageProcessor {
         // 提取色彩配方参数
         val effectiveRecipeParams = colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
+        val redHalation = effectiveRecipeParams?.redHalation ?: 0f
 
         // 后期处理参数（仅在软件处理模式下生效）
         val sharpening: Float = sharpeningValue
@@ -411,6 +425,10 @@ class LutImageProcessor {
         // HDF 光晕效果预处理
         if (halation > 0f) {
             renderHDFBlur(inputTexId, width, height, halation)
+            currentCoroutineContext().ensureActive()
+        }
+        if (redHalation > 0f) {
+            renderHalationBlur(inputTexId, width, height, redHalation)
             currentCoroutineContext().ensureActive()
         }
 
@@ -608,6 +626,7 @@ class LutImageProcessor {
         val vignette = effectiveRecipeParams?.vignette ?: 0f
         val bleachBypass = effectiveRecipeParams?.bleachBypass ?: 0f
         val halation = effectiveRecipeParams?.halation ?: 0f
+        val redHalation = effectiveRecipeParams?.redHalation ?: 0f
         val chromaticAberration = effectiveRecipeParams?.chromaticAberration ?: 0f
         val noise = effectiveRecipeParams?.noise ?: 0f
         val lowRes = effectiveRecipeParams?.lowRes ?: 0f
@@ -713,6 +732,14 @@ class LutImageProcessor {
             GLES30.glActiveTexture(GLES30.GL_TEXTURE2)
             GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, hdfTexId[1])
             GLES30.glUniform1i(GLES30.glGetUniformLocation(program, "uHdfTexture"), 2)
+        }
+
+        // 设置 Halation 参数
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(program, "uRedHalation"), redHalation)
+        if (redHalation > 0f) {
+            GLES30.glActiveTexture(GLES30.GL_TEXTURE4)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, halationTexId[1])
+            GLES30.glUniform1i(GLES30.glGetUniformLocation(program, "uRedHalationTexture"), 4)
         }
 
         // 设置色散参数
@@ -1002,11 +1029,13 @@ class LutImageProcessor {
         val vShader = compileShader(GLES30.GL_VERTEX_SHADER, IMAGE_VERTEX_SHADER)
         hdfExtractBlurHProgram = createProgram(vShader, HDF_EXTRACT_BLUR_H_SHADER)
         hdfBlurVProgram = createProgram(vShader, HDF_BLUR_V_SHADER)
+        halationExtractBlurHProgram = createProgram(vShader, HALATION_EXTRACT_BLUR_H_SHADER)
+        halationBlurVProgram = createProgram(vShader, HDF_BLUR_V_SHADER)
         GLES30.glDeleteShader(vShader)
 
         PLog.d(
             TAG,
-            "HDF programs initialized: ExtractH=$hdfExtractBlurHProgram BlurV=$hdfBlurVProgram"
+            "HDF/Halation programs initialized"
         )
     }
 
@@ -1227,6 +1256,95 @@ class LutImageProcessor {
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     }
 
+    private fun setupHalationFramebuffers(width: Int, height: Int) {
+        val dsW = width / 4
+        val dsH = height / 4
+        if (halationWidth == dsW && halationHeight == dsH && halationTexId[0] != 0) return
+        halationWidth = dsW
+        halationHeight = dsH
+
+        for (i in 0..1) {
+            if (halationTexId[i] != 0) GLES30.glDeleteTextures(1, intArrayOf(halationTexId[i]), 0)
+            if (halationFboId[i] != 0) GLES30.glDeleteFramebuffers(1, intArrayOf(halationFboId[i]), 0)
+            val t = IntArray(1)
+            val f = IntArray(1)
+            GLES30.glGenTextures(1, t, 0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, t[0])
+            GLES30.glTexImage2D(
+                GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA16F,
+                dsW, dsH, 0,
+                GLES30.GL_RGBA, GLES30.GL_HALF_FLOAT, null
+            )
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glGenFramebuffers(1, f, 0)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, f[0])
+            GLES30.glFramebufferTexture2D(
+                GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0,
+                GLES30.GL_TEXTURE_2D, t[0], 0
+            )
+            halationTexId[i] = t[0]
+            halationFboId[i] = f[0]
+        }
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+    }
+
+    private fun renderHalationBlur(
+        sourceTexId: Int,
+        width: Int,
+        height: Int,
+        halation: Float
+    ) {
+        setupHalationFramebuffers(width, height)
+        if (halationExtractBlurHProgram == 0 || halationBlurVProgram == 0) return
+
+        val dsW = width / 4
+        val dsH = height / 4
+        val texelW = 1.0f / dsW
+        val texelH = 1.0f / dsH
+        
+        val threshold = 0.75f // 恒定高光提取阈值，只让强度随滑块变化
+
+        val identityMatrix = FloatArray(16)
+        android.opengl.Matrix.setIdentityM(identityMatrix, 0)
+
+        // Pass 1: Extract + Blur H
+        GLES30.glUseProgram(halationExtractBlurHProgram)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, halationFboId[0])
+        GLES30.glViewport(0, 0, dsW, dsH)
+        
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, sourceTexId)
+        GLES30.glUniform1i(GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uInputTexture"), 0)
+        GLES30.glUniform2f(GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uTexelSize"), texelW, texelH)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uThreshold"), threshold)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uStrength"), halation)
+        
+        GLES30.glUniformMatrix4fv(
+            GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uMVPMatrix"), 1, false, identityMatrix, 0
+        )
+        drawQuad(halationExtractBlurHProgram)
+
+        // Pass 2: Blur V
+        GLES30.glUseProgram(halationBlurVProgram)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, halationFboId[1])
+        GLES30.glViewport(0, 0, dsW, dsH)
+        
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, halationTexId[0])
+        GLES30.glUniform1i(GLES30.glGetUniformLocation(halationBlurVProgram, "uInputTexture"), 0)
+        GLES30.glUniform2f(GLES30.glGetUniformLocation(halationBlurVProgram, "uTexelSize"), texelW, texelH)
+        
+        GLES30.glUniformMatrix4fv(
+            GLES30.glGetUniformLocation(halationBlurVProgram, "uMVPMatrix"), 1, false, identityMatrix, 0
+        )
+        drawQuad(halationBlurVProgram)
+
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+    }
+
     /**
      * 渲染 HDF 光晕效果
      * 3 pass: 高光提取+水平模糊 → 垂直模糊 → 全分辨率合成
@@ -1417,6 +1535,13 @@ class LutImageProcessor {
             if (hdfTexId[i] != 0) GLES30.glDeleteTextures(1, intArrayOf(hdfTexId[i]), 0)
             if (hdfFboId[i] != 0) GLES30.glDeleteFramebuffers(1, intArrayOf(hdfFboId[i]), 0)
         }
+        
+        if (halationExtractBlurHProgram != 0) GLES30.glDeleteProgram(halationExtractBlurHProgram)
+        if (halationBlurVProgram != 0) GLES30.glDeleteProgram(halationBlurVProgram)
+        for (i in 0..1) {
+            if (halationTexId[i] != 0) GLES30.glDeleteTextures(1, intArrayOf(halationTexId[i]), 0)
+            if (halationFboId[i] != 0) GLES30.glDeleteFramebuffers(1, intArrayOf(halationFboId[i]), 0)
+        }
 
         EGL14.eglMakeCurrent(eglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT)
         EGL14.eglDestroySurface(eglDisplay, eglSurface)
@@ -1499,6 +1624,8 @@ class LutImageProcessor {
             // HDF 光晕效果
             uniform float uHalation;      // 0.0 ~ 1.0 (光晕强度)
             uniform sampler2D uHdfTexture; // 光晕合成纹理
+            uniform float uRedHalation;      // 0.0 ~ 1.0 (胶片红晕强度)
+            uniform sampler2D uRedHalationTexture; // 胶片红晕合成纹理
             
             // 色散效果
             uniform float uChromaticAberration; // 0.0 ~ 1.0 (色散强度)
@@ -2088,6 +2215,12 @@ class LutImageProcessor {
                     // 5. 稍微削减对比度以获得“电影感”
                     color.rgb = (color.rgb - 0.5) * (1.0 - uHalation * 0.08) + 0.5;
                 }
+                
+                if (uRedHalation > 0.0) {
+                    vec3 redBloom = texture(uRedHalationTexture, uvCoord).rgb;
+                    vec3 redBloomEffect = redBloom * uRedHalation * 3.5;
+                    color.rgb = vec3(1.0) - (vec3(1.0) - color.rgb) * (vec3(1.0) - redBloomEffect);
+                }
 
                 // === LUT 处理（在色彩配方之后） ===
                 if (uLutEnabled && uLutIntensity > 0.0) {
@@ -2144,7 +2277,41 @@ class LutImageProcessor {
                 "vec4 sampleImage(vec2 uv) { return texture(uImageTexture, uv); }\n" +
                 SHADER_BODY
 
-        // === HDF (Highlight Diffusion Filter) Shaders ===
+        // === HDF (Highlight Diffusion Filter) \u0026 Halation Shaders ===
+
+        private val HALATION_EXTRACT_BLUR_H_SHADER = """
+            #version 300 es
+            precision highp float;
+            
+            in vec2 vTexCoord;
+            out vec4 fragColor;
+            
+            uniform sampler2D uInputTexture;
+            uniform vec2 uTexelSize;
+            uniform float uThreshold;
+            uniform float uStrength;
+            
+            void main() {
+                vec3 tint = vec3(1.0, 0.15, 0.0);
+                
+                #define EXTRACT(sampleColor) \
+                    (sampleColor * tint * smoothstep(uThreshold, uThreshold + 0.15, mix(dot(sampleColor, vec3(0.2126, 0.7152, 0.0722)), max(sampleColor.r, max(sampleColor.g, sampleColor.b)), 0.6)))
+                
+                vec3 color = texture(uInputTexture, vTexCoord).rgb;
+                vec3 sum = EXTRACT(color) * 0.204164;
+                
+                float weights[5] = float[](0.204164, 0.304005, 0.093910, 0.010416, 0.000005);
+                float offsets[5] = float[](0.0, 1.407333, 3.294215, 5.176470, 7.058823);
+                
+                for (int i = 1; i < 5; i++) {
+                    float offset = offsets[i] * uTexelSize.x * 2.0;
+                    sum += EXTRACT(texture(uInputTexture, vTexCoord + vec2(offset, 0.0)).rgb) * weights[i];
+                    sum += EXTRACT(texture(uInputTexture, vTexCoord - vec2(offset, 0.0)).rgb) * weights[i];
+                }
+                
+                fragColor = vec4(sum, 1.0);
+            }
+        """.trimIndent()
 
         /**
          * Pass 1: 提取高光区域 + 水平高斯模糊

@@ -246,7 +246,8 @@
     <string name="recipe_param_film_grain">顆粒</string>
     <string name="recipe_param_vignette">暈影</string>
     <string name="recipe_param_bleach_bypass">留銀沖洗</string>
-    <string name="recipe_param_halation">HDF</string>
+    <string name="recipe_param_hdf">HDF</string>
+    <string name="recipe_param_halation">光暈</string>
     <string name="recipe_param_chromatic_aberration">色散(CA)</string>
     <string name="recipe_param_noise">雜點</string>
     <string name="recipe_param_low_res">低像素</string>

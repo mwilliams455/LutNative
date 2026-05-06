@@ -245,6 +245,12 @@ class LutRenderer : GLSurfaceView.Renderer {
     private var hdfFboId = IntArray(2)
     private var hdfWidth: Int = 0
     private var hdfHeight: Int = 0
+    private var halationExtractBlurHProgram: Int = 0
+    private var halationBlurVProgram: Int = 0
+    private var halationTexId = IntArray(2)
+    private var halationFboId = IntArray(2)
+    private var halationWidth: Int = 0
+    private var halationHeight: Int = 0
     
     // Bokeh 实时预览资源
     private var bokehProgramId: Int = 0
@@ -401,6 +407,9 @@ class LutRenderer : GLSurfaceView.Renderer {
 
     @Volatile
     var halation: Float = 0f // 0.0 ~ 1.0
+
+    @Volatile
+    var redHalation: Float = 0f // 0.0 ~ 1.0
 
     @Volatile var primaryRedHue: Float = 0f
     @Volatile var primaryRedSaturation: Float = 0f
@@ -573,6 +582,12 @@ class LutRenderer : GLSurfaceView.Renderer {
         hdfFboId = IntArray(2)
         hdfWidth = 0
         hdfHeight = 0
+        halationExtractBlurHProgram = 0
+        halationBlurVProgram = 0
+        halationTexId = IntArray(2)
+        halationFboId = IntArray(2)
+        halationWidth = 0
+        halationHeight = 0
         bokehProgramId = 0
         depthTextureId = 0
         lastDepthMap = null
@@ -911,13 +926,15 @@ class LutRenderer : GLSurfaceView.Renderer {
             videoRenderStatsFrames = 0
         }
         val hdfEnabled = halation > 0.001f
+        val halationEnabled = redHalation > 0.001f
+        val postProcessEffectEnabled = hdfEnabled || halationEnabled
         val bokehNeeded = aperture > 0f && depthMap != null
         val suppressBaselineLayerForVideoLog = videoLogProfile.isEnabled
         val hasBaselineLayer = hasBaselineLayer() && !suppressBaselineLayerForVideoLog
         val hasCreativeLayer = hasCreativeLayer()
         val hasDualLayer = hasBaselineLayer && hasCreativeLayer
         uploadPendingCurveTextures()
-        val needsFbo = (liveRecorder != null || activeVideoRecorder != null || hdfEnabled || bokehNeeded || hasDualLayer || (!isAutoFocus && focusPeakingEnabled)) &&
+        val needsFbo = (liveRecorder != null || activeVideoRecorder != null || postProcessEffectEnabled || bokehNeeded || hasDualLayer || (!isAutoFocus && focusPeakingEnabled)) &&
             fboId != 0 && fboTextureId != 0
 
         if (needsFbo) {
@@ -982,6 +999,9 @@ class LutRenderer : GLSurfaceView.Renderer {
             if (hdfEnabled) {
                 renderHdfPreviewBlur(currentTexId, currentWidth, currentHeight)
             }
+            if (halationEnabled) {
+                renderHalationPreviewBlur(currentTexId, currentWidth, currentHeight)
+            }
 
 
             // 确保 FBO 内容已刷入显存
@@ -1018,8 +1038,8 @@ class LutRenderer : GLSurfaceView.Renderer {
                 activeVideoRecorder?.targetSize?.let { targetSize ->
                     ensureRecordFbo(targetSize.width, targetSize.height)
                     if (recordFboId != 0 && recordTextureId != 0) {
-                        if (hdfEnabled) {
-                            drawHdfComposite(recordFboId, targetSize.width, targetSize.height, currentTexId)
+                        if (postProcessEffectEnabled) {
+                            drawPostProcessComposite(recordFboId, targetSize.width, targetSize.height, currentTexId)
                         } else if (bokehNeeded) {
                             drawFboToScreen(recordFboId, targetSize.width, targetSize.height, currentTexId)
                         } else {
@@ -1054,15 +1074,15 @@ class LutRenderer : GLSurfaceView.Renderer {
             }
 
             // 6. 显示到屏幕
-            if (hdfEnabled) {
-                drawHdfComposite(0, viewportWidth, viewportHeight, currentTexId)
+            if (postProcessEffectEnabled) {
+                drawPostProcessComposite(0, viewportWidth, viewportHeight, currentTexId)
             } else {
                 drawFboToScreen(0, viewportWidth, viewportHeight, currentTexId)
             }
             val finalDisplayTextureId = currentTexId
             val finalDisplayWidth = viewportWidth
             val finalDisplayHeight = viewportHeight
-            val needsHdfCompositeForSampling = hdfEnabled
+            val needsHdfCompositeForSampling = postProcessEffectEnabled
             if (shouldCapturePreview) {
                 shouldCapturePreview = false
                 capturePreviewFrameInternal(
@@ -1421,10 +1441,39 @@ class LutRenderer : GLSurfaceView.Renderer {
         val compositeFs = GlUtils.compileShader(GLES30.GL_FRAGMENT_SHADER, Shaders.HDF_PREVIEW_COMPOSITE)
         hdfCompositeProgram = GlUtils.linkProgram(simpleVs, compositeFs)
         GLES30.glDeleteShader(compositeFs)
+        val halationExtractHFs = GlUtils.compileShader(GLES30.GL_FRAGMENT_SHADER, Shaders.HALATION_PREVIEW_EXTRACT_BLUR_H)
+        val halationBlurVFs = GlUtils.compileShader(GLES30.GL_FRAGMENT_SHADER, Shaders.HALATION_PREVIEW_BLUR_V)
+        halationExtractBlurHProgram = GlUtils.linkProgram(simpleVs, halationExtractHFs)
+        halationBlurVProgram = GlUtils.linkProgram(simpleVs, halationBlurVFs)
+        GLES30.glDeleteShader(halationExtractHFs)
+        GLES30.glDeleteShader(halationBlurVFs)
         GLES30.glDeleteShader(simpleVs)
-        if (hdfExtractBlurHProgram == 0 || hdfBlurVProgram == 0 || hdfCompositeProgram == 0) {
+
+        if (hdfExtractBlurHProgram == 0 || hdfBlurVProgram == 0 || hdfCompositeProgram == 0 || halationExtractBlurHProgram == 0 || halationBlurVProgram == 0) {
             PLog.e(TAG, "Failed to link HDF preview programs")
         }
+    }
+
+    private fun setupHalationFbos(width: Int, height: Int) {
+        val dsW = width / 4; val dsH = height / 4
+        if (halationWidth == dsW && halationHeight == dsH && halationTexId[0] != 0) return
+        halationWidth = dsW; halationHeight = dsH
+        for (i in 0..1) {
+            if (halationTexId[i] != 0) GLES30.glDeleteTextures(1, intArrayOf(halationTexId[i]), 0)
+            if (halationFboId[i] != 0) GLES30.glDeleteFramebuffers(1, intArrayOf(halationFboId[i]), 0)
+            val t = IntArray(1); val f = IntArray(1)
+            GLES30.glGenTextures(1, t, 0); GLES30.glGenFramebuffers(1, f, 0)
+            GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, t[0])
+            GLES30.glTexImage2D(GLES30.GL_TEXTURE_2D, 0, GLES30.GL_RGBA8, dsW, dsH, 0, GLES30.GL_RGBA, GLES30.GL_UNSIGNED_BYTE, null)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MIN_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_MAG_FILTER, GLES30.GL_LINEAR)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_S, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glTexParameteri(GLES30.GL_TEXTURE_2D, GLES30.GL_TEXTURE_WRAP_T, GLES30.GL_CLAMP_TO_EDGE)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, f[0])
+            GLES30.glFramebufferTexture2D(GLES30.GL_FRAMEBUFFER, GLES30.GL_COLOR_ATTACHMENT0, GLES30.GL_TEXTURE_2D, t[0], 0)
+            halationTexId[i] = t[0]; halationFboId[i] = f[0]
+        }
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     }
 
     private fun setupHdfFbos(width: Int, height: Int) {
@@ -1500,7 +1549,36 @@ class LutRenderer : GLSurfaceView.Renderer {
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
     }
 
-    private fun drawHdfComposite(targetFboId: Int, width: Int, height: Int, sourceTextureId: Int) {
+    private fun renderHalationPreviewBlur(sourceTexId: Int, width: Int, height: Int) {
+        setupHalationFbos(width, height)
+        if (halationExtractBlurHProgram == 0 || halationBlurVProgram == 0) return
+        val dsW = width / 4; val dsH = height / 4
+        val texelW = 1.0f / dsW; val texelH = 1.0f / dsH
+        val threshold = 0.75f // 恒定高光提取阈值
+        
+        GLES30.glUseProgram(halationExtractBlurHProgram)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, halationFboId[0])
+        GLES30.glViewport(0, 0, dsW, dsH)
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, sourceTexId)
+        GLES30.glUniform1i(GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uInputTexture"), 0)
+        GLES30.glUniform2f(GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uTexelSize"), texelW, texelH)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uThreshold"), threshold)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(halationExtractBlurHProgram, "uStrength"), redHalation)
+        drawSimpleQuad(halationExtractBlurHProgram)
+        
+        GLES30.glUseProgram(halationBlurVProgram)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, halationFboId[1])
+        GLES30.glViewport(0, 0, dsW, dsH)
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, halationTexId[0])
+        GLES30.glUniform1i(GLES30.glGetUniformLocation(halationBlurVProgram, "uInputTexture"), 0)
+        GLES30.glUniform2f(GLES30.glGetUniformLocation(halationBlurVProgram, "uTexelSize"), texelW, texelH)
+        drawSimpleQuad(halationBlurVProgram)
+        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+    }
+
+    private fun drawPostProcessComposite(targetFboId: Int, width: Int, height: Int, sourceTextureId: Int) {
         if (hdfCompositeProgram == 0) return
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, targetFboId)
         GLES30.glViewport(0, 0, width, height)
@@ -1513,6 +1591,11 @@ class LutRenderer : GLSurfaceView.Renderer {
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, hdfTexId[1])
         GLES30.glUniform1i(GLES30.glGetUniformLocation(hdfCompositeProgram, "uBloomTexture"), 1)
         GLES30.glUniform1f(GLES30.glGetUniformLocation(hdfCompositeProgram, "uHalation"), halation)
+        
+        GLES30.glActiveTexture(GLES30.GL_TEXTURE2)
+        GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, if (redHalation > 0f) halationTexId[1] else 0)
+        GLES30.glUniform1i(GLES30.glGetUniformLocation(hdfCompositeProgram, "uRedHalationTexture"), 2)
+        GLES30.glUniform1f(GLES30.glGetUniformLocation(hdfCompositeProgram, "uRedHalation"), redHalation)
         drawSimpleQuad(hdfCompositeProgram)
     }
 
@@ -2069,7 +2152,7 @@ class LutRenderer : GLSurfaceView.Renderer {
 
             if (sourceTextureId != null && sourceTextureId != 0) {
                 if (compositeWithHdf) {
-                    drawHdfComposite(captureFboId, captureWidth, captureHeight, sourceTextureId)
+                    drawPostProcessComposite(captureFboId, captureWidth, captureHeight, sourceTextureId)
                 } else {
                     drawFboToScreen(
                         fboId = captureFboId,
@@ -2151,7 +2234,7 @@ class LutRenderer : GLSurfaceView.Renderer {
 
         if (sourceTextureId != null && sourceTextureId != 0) {
             if (compositeWithHdf) {
-                drawHdfComposite(meteringFboId, METERING_SIZE, METERING_SIZE, sourceTextureId)
+                drawPostProcessComposite(meteringFboId, METERING_SIZE, METERING_SIZE, sourceTextureId)
             } else {
                 drawFboToScreen(
                     fboId = meteringFboId,
@@ -2662,6 +2745,7 @@ class LutRenderer : GLSurfaceView.Renderer {
         bleachBypass = params.bleachBypass
         chromaticAberration = params.chromaticAberration
         halation = params.halation
+        redHalation = params.redHalation
         noise = params.noise
         lowRes = params.lowRes
         primaryRedHue = params.primaryRedHue

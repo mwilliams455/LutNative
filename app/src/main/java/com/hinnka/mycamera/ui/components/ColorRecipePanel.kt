@@ -89,6 +89,7 @@ fun ColorRecipePanel(
             RecipeParam.BLEACH_BYPASS,
         ),
         listOf(            // 7 lens
+            RecipeParam.HDF,
             RecipeParam.HALATION,
             RecipeParam.CHROMATIC_ABERRATION,
             RecipeParam.NOISE,
@@ -618,6 +619,7 @@ private fun formatParamValue(param: RecipeParam, value: Float): String {
         RecipeParam.NOISE,
         RecipeParam.LOW_RES,
         RecipeParam.BLEACH_BYPASS,
+        RecipeParam.HDF,
         RecipeParam.HALATION,
         RecipeParam.CHROMATIC_ABERRATION -> String.format("%.2f", value)
 
@@ -679,7 +681,8 @@ private fun getParamColor(param: RecipeParam): Color {
         RecipeParam.NOISE -> Color(0xFFA1887F) // 浅棕色
         RecipeParam.VIGNETTE -> Color(0xFF795548) // 棕色
         RecipeParam.BLEACH_BYPASS -> Color(0xFF00BCD4) // 青色
-        RecipeParam.HALATION -> Color(0xFFFF7043) // 暖橙色（光晕）
+        RecipeParam.HDF -> Color(0xFFFFC107) // 暖黄色（高光扩散）
+        RecipeParam.HALATION -> Color(0xFFFF7043) // 暖橙色（胶片光晕）
         RecipeParam.CHROMATIC_ABERRATION -> Color(0xFFAB47BC) // 紫色（色散）
         RecipeParam.LOW_RES -> Color(0xFF8D6E63) // 棕灰色（低像素）
         RecipeParam.LUT_INTENSITY -> Color(0xFF9E9E9E) // 灰色

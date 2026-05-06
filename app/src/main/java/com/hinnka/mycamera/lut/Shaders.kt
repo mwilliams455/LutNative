@@ -156,19 +156,66 @@ object Shaders {
         uniform sampler2D uOriginalTexture;
         uniform sampler2D uBloomTexture;
         uniform float uHalation;
+        uniform sampler2D uRedHalationTexture;
+        uniform float uRedHalation;
+        
         void main() {
             vec4 color = texture(uOriginalTexture, vTexCoord);
-            vec3 bloom = texture(uBloomTexture, vTexCoord).rgb;
-            float bLuma = dot(bloom, vec3(0.2126, 0.7152, 0.0722));
-            bloom = mix(vec3(bLuma), bloom, 1.6);
-            vec3 bloomEffect = bloom * uHalation * 1.4;
-            color.rgb = vec3(1.0) - (vec3(1.0) - color.rgb) * (vec3(1.0) - bloomEffect);
-            float mist = bLuma * uHalation * 0.15;
-            color.rgb += mist;
-            color.rgb = (color.rgb - 0.5) * (1.0 - uHalation * 0.08) + 0.5;
+            
+            if (uHalation > 0.0) {
+                vec3 bloom = texture(uBloomTexture, vTexCoord).rgb;
+                float bLuma = dot(bloom, vec3(0.2126, 0.7152, 0.0722));
+                bloom = mix(vec3(bLuma), bloom, 1.6);
+                vec3 bloomEffect = bloom * uHalation * 1.4;
+                color.rgb = vec3(1.0) - (vec3(1.0) - color.rgb) * (vec3(1.0) - bloomEffect);
+                float mist = bLuma * uHalation * 0.15;
+                color.rgb += mist;
+                color.rgb = (color.rgb - 0.5) * (1.0 - uHalation * 0.08) + 0.5;
+            }
+            
+            if (uRedHalation > 0.0) {
+                vec3 redBloom = texture(uRedHalationTexture, vTexCoord).rgb;
+                vec3 redBloomEffect = redBloom * uRedHalation * 3.5;
+                color.rgb = vec3(1.0) - (vec3(1.0) - color.rgb) * (vec3(1.0) - redBloomEffect);
+            }
+            
             fragColor = clamp(color, 0.0, 1.0);
         }
     """.trimIndent()
+
+    /** Halation Pass 1: 高光提取 + 暖红橙染色 + 水平高斯模糊 (实时预览) */
+    val HALATION_PREVIEW_EXTRACT_BLUR_H = """
+        #version 300 es
+        precision highp float;
+        in vec2 vTexCoord;
+        out vec4 fragColor;
+        uniform sampler2D uInputTexture;
+        uniform vec2 uTexelSize;
+        uniform float uThreshold;
+        uniform float uStrength;
+        void main() {
+            vec3 tint = vec3(1.0, 0.15, 0.0);
+            
+            // 提取高光函数
+            #define EXTRACT(sampleColor) \
+                (sampleColor * tint * smoothstep(uThreshold, uThreshold + 0.15, mix(dot(sampleColor, vec3(0.2126, 0.7152, 0.0722)), max(sampleColor.r, max(sampleColor.g, sampleColor.b)), 0.6)))
+
+            vec3 color = texture(uInputTexture, vTexCoord).rgb;
+            vec3 sum = EXTRACT(color) * 0.204164;
+            
+            float blurOffsets[4] = float[](1.407333, 3.294215, 5.176470, 7.058823);
+            float blurWeights[4] = float[](0.304005, 0.093910, 0.010416, 0.000005);
+            for (int i = 0; i < 4; i++) {
+                float off = blurOffsets[i] * uTexelSize.x * 2.0;
+                sum += EXTRACT(texture(uInputTexture, vTexCoord + vec2(off, 0.0)).rgb) * blurWeights[i];
+                sum += EXTRACT(texture(uInputTexture, vTexCoord - vec2(off, 0.0)).rgb) * blurWeights[i];
+            }
+            fragColor = vec4(sum, 1.0);
+        }
+    """.trimIndent()
+
+    /** Halation Pass 2: 垂直高斯模糊 */
+    val HALATION_PREVIEW_BLUR_V = HDF_PREVIEW_BLUR_V
 
     /**
      * Focus Peaking Shader

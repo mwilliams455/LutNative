@@ -320,6 +320,9 @@ class LutRenderer : GLSurfaceView.Renderer {
     var isAutoFocus: Boolean = true
 
     @Volatile
+    var focusPeakingEnabled: Boolean = true
+
+    @Volatile
     var baselineLutEnabled: Boolean = false
 
     // 色彩配方参数
@@ -914,7 +917,7 @@ class LutRenderer : GLSurfaceView.Renderer {
         val hasCreativeLayer = hasCreativeLayer()
         val hasDualLayer = hasBaselineLayer && hasCreativeLayer
         uploadPendingCurveTextures()
-        val needsFbo = (liveRecorder != null || activeVideoRecorder != null || hdfEnabled || bokehNeeded || hasDualLayer || !isAutoFocus) &&
+        val needsFbo = (liveRecorder != null || activeVideoRecorder != null || hdfEnabled || bokehNeeded || hasDualLayer || (!isAutoFocus && focusPeakingEnabled)) &&
             fboId != 0 && fboTextureId != 0
 
         if (needsFbo) {
@@ -1046,7 +1049,7 @@ class LutRenderer : GLSurfaceView.Renderer {
             }
 
             // 3.5. Focus Peaking (Only for preview, not for recording)
-            if (!isAutoFocus) {
+            if (!isAutoFocus && focusPeakingEnabled) {
                 currentTexId = renderFocusPeaking(currentTexId, currentWidth, currentHeight)
             }
 

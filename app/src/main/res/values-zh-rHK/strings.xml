@@ -114,6 +114,8 @@
     <string name="settings_use_raw_description">使用 RAW 格式 (DNG) 拍攝。關閉後將使用 YCBCR_P010/YUV_420 格式。</string>
     <string name="settings_level_indicator">水平儀</string>
     <string name="settings_level_description">在拍攝時顯示水平儀，幫助保持畫面水平</string>
+    <string name="settings_focus_peaking">峰值對焦</string>
+    <string name="settings_focus_peaking_description">手動對焦時顯示峰值對焦高亮</string>
     <string name="settings_grid_lines">網格線顯示</string>
     <string name="settings_grid_description">在拍攝時顯示網格線，輔助構圖</string>
     <string name="settings_use_multi_frame">多幀合成</string>

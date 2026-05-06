@@ -60,6 +60,7 @@ fun CameraPreviewGL(
     onGLSurfaceViewReady: ((CameraGLSurfaceView) -> Unit)? = null,
     aperture: Float = 0f,
     isAutoFocus: Boolean = true,
+    focusPeakingEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val rotationDegrees = OrientationObserver.rotationDegrees
@@ -215,6 +216,7 @@ fun CameraPreviewGL(
                         glSurfaceView.setVideoLogProfile(videoLogProfile)
                         glSurfaceView.setIsHlgInput(isHlgInput)
                         glSurfaceView.setAutoFocus(isAutoFocus)
+                        glSurfaceView.setFocusPeakingEnabled(focusPeakingEnabled)
                     },
                     modifier = Modifier.fillMaxSize()
                 )

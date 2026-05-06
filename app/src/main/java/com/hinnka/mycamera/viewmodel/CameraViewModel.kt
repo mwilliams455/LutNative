@@ -192,6 +192,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     // 新增设置项 StateFlow
     val showLevelIndicator: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.showLevelIndicator }
+    val focusPeakingEnabled: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.focusPeakingEnabled }
     val shutterSoundEnabled: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.shutterSoundEnabled }
     val vibrationEnabled: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.vibrationEnabled }
     val volumeKeyAction: StateFlow<VolumeKeyAction> =
@@ -2131,6 +2132,15 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun setShowLevelIndicator(show: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.saveShowLevelIndicator(show)
+        }
+    }
+
+    /**
+     * 设置手动对焦时是否显示峰值对焦
+     */
+    fun setFocusPeakingEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferencesRepository.saveFocusPeakingEnabled(enabled)
         }
     }
 

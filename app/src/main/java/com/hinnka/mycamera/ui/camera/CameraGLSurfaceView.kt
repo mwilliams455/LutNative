@@ -186,6 +186,11 @@ class CameraGLSurfaceView @JvmOverloads constructor(
         requestRender()
     }
 
+    fun setFocusPeakingEnabled(enabled: Boolean) {
+        renderer.focusPeakingEnabled = enabled
+        requestRender()
+    }
+
     /**
      * 获取当前 LUT 强度
      */

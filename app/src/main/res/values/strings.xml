@@ -165,6 +165,8 @@
     <string name="settings_use_raw_description">Capture photos in RAW format (DNG) for higher quality. Turn off to use YUV format.</string>
     <string name="settings_level_indicator">Horizontal Level</string>
     <string name="settings_level_description">Show horizontal level indicator while shooting</string>
+    <string name="settings_focus_peaking">Focus Peaking</string>
+    <string name="settings_focus_peaking_description">Show focus peaking highlights during manual focus</string>
     <string name="settings_grid_lines">Grid Lines</string>
     <string name="settings_grid_description">Show grid lines for composition</string>
     <string name="settings_use_multi_frame">Multi-Frame Denoise</string>

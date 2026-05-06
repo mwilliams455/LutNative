@@ -112,6 +112,7 @@ fun CameraScreen(
     val state by viewModel.state.collectAsState()
     val latestPhoto by galleryViewModel.latestPhoto.collectAsState()
     val showLevelIndicator by viewModel.showLevelIndicator.collectAsState(initial = false)
+    val focusPeakingEnabled by viewModel.focusPeakingEnabled.collectAsState(initial = true)
     val currentLutId by viewModel.currentLutId.collectAsState()
     val currentRecipeParams by viewModel.currentRecipeParams.collectAsState()
     val currentBaselineRecipeParams by viewModel.currentBaselineRecipeParams.collectAsState()
@@ -737,6 +738,7 @@ fun CameraScreen(
                         isHlgInput = if (hlgHardwareCompatibilityEnabled) state.isHLG else false,
                         aperture = if (state.isVirtualApertureEnabled) state.virtualAperture else 0f,
                         isAutoFocus = state.isAutoFocus,
+                        focusPeakingEnabled = focusPeakingEnabled,
                         modifier = Modifier.fillMaxSize()
                     )
 

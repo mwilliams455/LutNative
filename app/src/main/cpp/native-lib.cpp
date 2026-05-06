@@ -2528,4 +2528,25 @@ Java_com_hinnka_mycamera_ml_DnCNNDenoiseEstimator_postprocessNative(
   AndroidBitmap_unlockPixels(env, dstBitmap);
 }
 
+JNIEXPORT jobject JNICALL
+Java_com_hinnka_mycamera_utils_DirectBufferAllocator_allocateNative(
+    JNIEnv *env, jobject, jlong capacity) {
+  void* ptr = malloc(capacity);
+  if (!ptr) {
+    LOGE("Failed to allocate %lld bytes", (long long)capacity);
+    return nullptr;
+  }
+  return env->NewDirectByteBuffer(ptr, capacity);
+}
+
+JNIEXPORT void JNICALL
+Java_com_hinnka_mycamera_utils_DirectBufferAllocator_freeNative(
+    JNIEnv *env, jobject, jobject buffer) {
+  if (!buffer) return;
+  void* ptr = env->GetDirectBufferAddress(buffer);
+  if (ptr) {
+    free(ptr);
+  }
+}
+
 } // extern "C"

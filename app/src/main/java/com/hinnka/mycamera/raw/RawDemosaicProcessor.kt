@@ -498,6 +498,7 @@ class RawDemosaicProcessor {
             }
 
             // Check GL_MAX_TEXTURE_SIZE and downscale if needed
+            var downscaledBuffer: ByteBuffer? = null
             if (actualWidth > maxTextureSize || actualHeight > maxTextureSize) {
                 PLog.w(
                     TAG,
@@ -516,7 +517,8 @@ class RawDemosaicProcessor {
                     srcBuf.position(0)
                     val src = srcBuf.asShortBuffer()
                     val dstSize = newWidth * newHeight * 3 * 2 // 3 channels * 2 bytes
-                    val dstByteBuf = ByteBuffer.allocateDirect(dstSize).order(java.nio.ByteOrder.nativeOrder())
+                    val dstByteBuf = com.hinnka.mycamera.utils.DirectBufferAllocator.allocateNative(dstSize.toLong())?.order(java.nio.ByteOrder.nativeOrder())
+                        ?: throw OutOfMemoryError("Failed to allocate native direct buffer")
                     val dst = dstByteBuf.asShortBuffer()
 
                     val srcChannels = 3
@@ -546,6 +548,7 @@ class RawDemosaicProcessor {
                         }
                     }
                     actualRawData = dstByteBuf
+                    downscaledBuffer = dstByteBuf
                     actualRowStride = newWidth * 6
                     PLog.d(TAG, "Downscaled to ${newWidth}x${newHeight}")
                 }
@@ -571,6 +574,9 @@ class RawDemosaicProcessor {
             )
             // GPU 已消费 rawData，立即释放 CPU 侧引用，帮助 GC 回收（超分时约 288 MB）
             actualRawData = null
+            downscaledBuffer?.let {
+                com.hinnka.mycamera.utils.DirectBufferAllocator.freeNative(it)
+            }
             renderLinearPass(
                 metadata = actualMetadata,
                 rawExposureCompensation = rawExposureCompensation,
@@ -2307,22 +2313,28 @@ class RawDemosaicProcessor {
 
         // --- 降级路径：直接分配 ByteBuffer（Java 堆）---
         val pixelBuffer = try {
-            ByteBuffer.allocateDirect(pixelSize).order(ByteOrder.nativeOrder())
+            com.hinnka.mycamera.utils.DirectBufferAllocator.allocateNative(pixelSize.toLong())?.order(ByteOrder.nativeOrder())
+                ?: throw OutOfMemoryError("Failed to allocate native direct buffer")
         } catch (e: OutOfMemoryError) {
             PLog.e(TAG, "OOM allocating pixel buffer ($width x $height, ${pixelSize}B)", e)
             return null
         }
-        GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0)
-        GLES30.glReadPixels(0, 0, width, height, GLES30.GL_RGBA, GLES30.GL_HALF_FLOAT, pixelBuffer)
-        pixelBuffer.position(0)
-        checkGlError("readPixels direct")
-        return try {
-            createBitmap(width, height, Bitmap.Config.RGBA_F16, colorSpace = colorSpace).also { bitmap ->
-                bitmap.copyPixelsFromBuffer(pixelBuffer)
+        
+        try {
+            GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0)
+            GLES30.glReadPixels(0, 0, width, height, GLES30.GL_RGBA, GLES30.GL_HALF_FLOAT, pixelBuffer)
+            pixelBuffer.position(0)
+            checkGlError("readPixels direct")
+            return try {
+                createBitmap(width, height, Bitmap.Config.RGBA_F16, colorSpace = colorSpace).also { bitmap ->
+                    bitmap.copyPixelsFromBuffer(pixelBuffer)
+                }
+            } catch (e: OutOfMemoryError) {
+                PLog.e(TAG, "OOM creating output bitmap ($width x $height)", e)
+                null
             }
-        } catch (e: OutOfMemoryError) {
-            PLog.e(TAG, "OOM creating output bitmap ($width x $height)", e)
-            null
+        } finally {
+            com.hinnka.mycamera.utils.DirectBufferAllocator.freeNative(pixelBuffer)
         }
     }
 

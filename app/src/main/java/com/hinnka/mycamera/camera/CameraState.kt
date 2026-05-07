@@ -16,6 +16,7 @@ enum class AspectRatio(val widthRatio: Int, val heightRatio: Int) {
     RATIO_4_3(4, 3),
     RATIO_16_9(16, 9),
     RATIO_1_1(1, 1),
+    RATIO_21_9(21, 9),
     XPAN(65, 24);
 
     fun getValue(isLandscape: Boolean): Float {

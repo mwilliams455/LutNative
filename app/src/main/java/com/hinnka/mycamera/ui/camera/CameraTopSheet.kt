@@ -122,7 +122,7 @@ fun CameraTopSheet(
                 SectionLabel(title = stringResource(R.string.aspect_ratio))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     AspectRatio.entries.forEach { ratio ->
                         val isSelected = aspectRatio == ratio
@@ -142,7 +142,7 @@ fun CameraTopSheet(
                             Text(
                                 text = ratio.getDisplayName(),
                                 color = if (isSelected) Color.Black else Color.White,
-                                fontSize = 13.sp,
+                                fontSize = 11.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
                         }

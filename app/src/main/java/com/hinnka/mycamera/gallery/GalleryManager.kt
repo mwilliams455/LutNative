@@ -1075,6 +1075,7 @@ object GalleryManager {
                     noiseReduction = noiseReductionValue,
                     chromaNoiseReduction = chromaNoiseReductionValue
                 )
+//                updateThumbnail(context, photoId, photoProcessor, metadata)
                 if (shouldAutoSave) {
                     exportPhoto(
                         context,
@@ -1235,6 +1236,7 @@ object GalleryManager {
                     preparedGainmapResult = preparedGainmapResult
                 )
             }
+            updateThumbnail(context, photoId, photoProcessor, metadata)
             if (shouldAutoSave) {
                 exportPhoto(
                     context,
@@ -1370,6 +1372,7 @@ object GalleryManager {
                 noiseReduction = noiseReductionValue,
                 chromaNoiseReduction = chromaNoiseReductionValue
             )
+//            updateThumbnail(context, photoId, photoProcessor, metadata)
 
             if (shouldAutoSave) {
                 exportPhoto(
@@ -1778,6 +1781,8 @@ object GalleryManager {
             }
             tempFile.renameTo(photoFile)
             generateBokehPhoto(context, photoId, metadata, result)
+
+            updateThumbnail(context, photoId, photoProcessor, metadata)
             // Auto Save
             if (shouldAutoSave) {
                 exportPhoto(
@@ -2523,6 +2528,46 @@ object GalleryManager {
             return null
         }
         return loadBitmap(context, Uri.fromFile(photoFile), maxEdge, preserveHdr)
+    }
+
+    suspend fun updateThumbnail(
+        context: Context,
+        photoId: String,
+        photoProcessor: PhotoProcessor,
+        metadata: MediaMetadata? = null
+    ) {
+        withContext(Dispatchers.IO) {
+            try {
+                val resolvedMetadata = metadata ?: loadMetadata(context, photoId) ?: return@withContext
+                // 加载原始位图，限制尺寸以提高性能
+                val originalBitmap = loadOriginalBitmap(context, photoId, maxEdge = THUMBNAIL_MAX_EDGE)
+                    ?: loadBitmap(context, photoId, maxEdge = THUMBNAIL_MAX_EDGE)
+                    ?: return@withContext
+
+                // 应用所有效果（LUT、虚化、裁切、边框等）到缩略图尺寸的位图
+                val processedBitmap = photoProcessor.processBitmap(
+                    context = context,
+                    photoId = photoId,
+                    input = originalBitmap,
+                    metadata = resolvedMetadata,
+                    sharpening = resolvedMetadata.sharpening ?: 0f,
+                    noiseReduction = resolvedMetadata.noiseReduction ?: 0f,
+                    chromaNoiseReduction = resolvedMetadata.chromaNoiseReduction ?: 0f,
+                    useComputationalAperture = true
+                )
+
+                val thumbnailFile = getThumbnailFile(context, photoId)
+                generateThumbnail(processedBitmap, thumbnailFile)
+
+                if (processedBitmap !== originalBitmap) {
+                    processedBitmap.recycle()
+                }
+                originalBitmap.recycle()
+                PLog.d(TAG, "Thumbnail updated for photo: $photoId")
+            } catch (e: Exception) {
+                PLog.e(TAG, "Failed to update thumbnail for photo: $photoId", e)
+            }
+        }
     }
 
     fun loadBitmap(context: Context, uri: Uri, maxEdge: Int? = null, preserveHdr: Boolean = false): Bitmap? {

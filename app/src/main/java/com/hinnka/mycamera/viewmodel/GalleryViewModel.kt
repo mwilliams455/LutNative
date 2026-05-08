@@ -393,6 +393,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
             if (!isActive) return@launch
             GalleryManager.saveBokehPhoto(context, photoData.id, bokeh)
             GalleryManager.deleteDetailHdrFile(context, photoData.id)
+            GalleryManager.updateThumbnail(
+                context = context,
+                photoId = photoData.id,
+                photoProcessor = contentRepository.photoProcessor,
+                metadata = metadata
+            )
             photoRefreshKeys[photoData.id] = System.currentTimeMillis()
         }
     }
@@ -491,6 +497,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     noiseReduction = updatedMetadata.noiseReduction ?: 0f,
                     chromaNoiseReduction = updatedMetadata.chromaNoiseReduction ?: 0f
                 )
+                GalleryManager.updateThumbnail(
+                    context = context,
+                    photoId = photo.id,
+                    photoProcessor = contentRepository.photoProcessor,
+                    metadata = updatedMetadata
+                )
 
                 _isAiDenoising.value = false
                 withContext(Dispatchers.Main) { onComplete(true) }
@@ -540,6 +552,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         chromaNoiseReduction = updatedMetadata.chromaNoiseReduction ?: 0f
                     )
                 }
+                GalleryManager.updateThumbnail(
+                    context = context,
+                    photoId = photo.id,
+                    photoProcessor = contentRepository.photoProcessor,
+                    metadata = updatedMetadata
+                )
                 invalidatePreviewCache(photo.id)
                 photoRefreshKeys[photo.id] = System.currentTimeMillis()
                 _isAiDenoising.value = false
@@ -1776,6 +1794,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                 if (updated != null) {
                     currentMediaMetadata = updated
                     mediaData.metadata = updated
+                    GalleryManager.updateThumbnail(
+                        context = context,
+                        photoId = mediaData.id,
+                        photoProcessor = contentRepository.photoProcessor,
+                        metadata = updated
+                    )
+                    photoRefreshKeys[mediaData.id] = System.currentTimeMillis()
                 }
             }
         }
@@ -2369,6 +2394,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         noiseReduction = success.noiseReduction ?: 0f,
                         chromaNoiseReduction = success.chromaNoiseReduction ?: 0f
                     )
+                    GalleryManager.updateThumbnail(
+                        context = context,
+                        photoId = targetPhotoId,
+                        photoProcessor = contentRepository.photoProcessor,
+                        metadata = success
+                    )
+                    photoRefreshKeys[targetPhotoId] = System.currentTimeMillis()
                 }
                 onComplete(success != null)
             } catch (e: Exception) {

@@ -553,6 +553,19 @@ private fun GalleryRecyclerGrid(
     val currentScrollState = if (selectedTab == GalleryTab.PHOTON) photonScrollState else systemScrollState
 
     key(selectedTab) {
+        val currentTab = selectedTab
+        val rvHolder = remember { arrayOfNulls<RecyclerView>(1) }
+        DisposableEffect(Unit) {
+            onDispose {
+                val state = rvHolder[0]?.layoutManager?.onSaveInstanceState()
+                if (currentTab == GalleryTab.PHOTON) {
+                    photonScrollState = state
+                } else {
+                    systemScrollState = state
+                }
+            }
+        }
+
         AndroidView(
             modifier = modifier,
             factory = { context ->
@@ -576,6 +589,7 @@ private fun GalleryRecyclerGrid(
                     setHasFixedSize(false)
                     addItemDecoration(GalleryGridSpacingDecoration(spacingPx))
                     this.adapter = adapter
+                    rvHolder[0] = this
 
                     // Save state when scrolling stops
                     addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -612,6 +626,15 @@ private fun GalleryRecyclerGrid(
                     layoutManager.spanCount = spanCount
                 }
 
+                fastScroller.onScrollEnd = {
+                    val state = recyclerView.layoutManager?.onSaveInstanceState()
+                    if (selectedTab == GalleryTab.PHOTON) {
+                        photonScrollState = state
+                    } else {
+                        systemScrollState = state
+                    }
+                }
+
                 adapter.bindState(
                     entries = entries,
                     selectedTab = selectedTab,
@@ -621,7 +644,15 @@ private fun GalleryRecyclerGrid(
                     isLoadingMore = isLoadingMore,
                     isLandscape = OrientationObserver.isLandscape,
                     rotationDegrees = OrientationObserver.rotationDegrees,
-                    onPhotoClick = onPhotoClick,
+                    onPhotoClick = { tab, index ->
+                        val state = recyclerView.layoutManager?.onSaveInstanceState()
+                        if (tab == GalleryTab.PHOTON) {
+                            photonScrollState = state
+                        } else {
+                            systemScrollState = state
+                        }
+                        onPhotoClick(tab, index)
+                    },
                     onLoadMore = onLoadMore
                 )
                 if (recyclerView.adapter == null) {
@@ -640,6 +671,7 @@ private class GalleryFastScrollerView(
     context: Context,
     private val recyclerView: RecyclerView
 ) : View(context) {
+    var onScrollEnd: (() -> Unit)? = null
     private val density = context.resources.displayMetrics.density
     private val thumbWidth = (4 * density).toInt()
     private val thumbHeight = (56 * density).toInt()
@@ -773,6 +805,7 @@ private class GalleryFastScrollerView(
                 if (isDragging) {
                     isDragging = false
                     dragLabel = null
+                    onScrollEnd?.invoke()
                     postDelayed(hideRunnable, 900)
                     invalidate()
                     return true

@@ -1787,12 +1787,15 @@ class LutImageProcessor {
 
             float fullCoverageBandWeight(float hue, float center, float chroma) {
                 float dist = abs(wrapAngle(hue - center));
-                float hueWeight = max(0.0, 1.0 - dist / radians(55.0));
+                // Use smoothstep for a more natural bell-curve falloff. 
+                // 85 degrees ensures coverage for wider gaps in Oklab hue space (e.g. Blue-Cyan).
+                float hueWeight = smoothstep(radians(85.0), 0.0, dist);
                 float chromaWeight = smoothstep(0.005, 0.03, chroma);
                 return hueWeight * chromaWeight;
             }
 
             float skinBandWeight(float hue, float chroma, float lightness) {
+                // Skin center aligned with Orange (52.0)
                 float hueWeight = 1.0 - smoothstep(radians(10.0), radians(24.0), abs(wrapAngle(hue - radians(52.0))));
                 float chromaWeight = smoothstep(0.015, 0.10, chroma);
                 float lightnessWeight = smoothstep(0.32, 0.52, lightness) * (1.0 - smoothstep(0.78, 0.90, lightness));
@@ -1825,15 +1828,16 @@ class LutImageProcessor {
                 float hue = atan(lab.z, lab.y);
                 if (hue < 0.0) hue += 2.0 * PI;
 
+                // Optimized centers mapping LR colors to Oklab hue angles
                 float centers[8] = float[](
-                    radians(20.0),
-                    radians(45.0),
-                    radians(75.0),
-                    radians(140.0),
-                    radians(200.0),
-                    radians(255.0),
-                    radians(295.0),
-                    radians(335.0)
+                    radians(29.0),  // Red
+                    radians(52.0),  // Orange
+                    radians(86.0),  // Yellow
+                    radians(144.0), // Green
+                    radians(196.0), // Aqua/Cyan
+                    radians(263.0), // Blue
+                    radians(304.0), // Purple
+                    radians(341.0)  // Magenta
                 );
 
                 float hueShift = 0.0;
@@ -1851,9 +1855,10 @@ class LutImageProcessor {
                 if (totalBandWeight > 0.0001) {
                     for (int i = 0; i < 8; i++) {
                         float weight = bandWeights[i] / totalBandWeight;
-                        hueShift += uLchHueAdjustments[i + 1] * weight * radians(45.0);
+                        // Reduce hue range to +/- 20 degrees for professional results
+                        hueShift += uLchHueAdjustments[i + 1] * weight * radians(20.0);
                         chromaScale += uLchChromaAdjustments[i + 1] * weight;
-                        lightnessShift += uLchLightnessAdjustments[i + 1] * weight * 0.18;
+                        lightnessShift += uLchLightnessAdjustments[i + 1] * weight * 0.15;
                     }
                 }
 
@@ -1864,9 +1869,9 @@ class LutImageProcessor {
                     smoothstep(0.28, 0.52, yellowRatio) *
                     lipSuppression;
                 if (skinWeight > 0.0001) {
-                    hueShift += uLchHueAdjustments[0] * skinWeight * radians(18.0);
+                    hueShift += uLchHueAdjustments[0] * skinWeight * radians(10.0);
                     chromaScale += uLchChromaAdjustments[0] * skinWeight;
-                    lightnessShift += uLchLightnessAdjustments[0] * skinWeight * 0.12;
+                    lightnessShift += uLchLightnessAdjustments[0] * skinWeight * 0.08;
                 }
 
                 if (abs(hueShift) < 0.0001 && abs(chromaScale - 1.0) < 0.0001 && abs(lightnessShift) < 0.0001) {

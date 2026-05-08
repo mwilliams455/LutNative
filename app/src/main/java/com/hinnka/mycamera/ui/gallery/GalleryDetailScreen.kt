@@ -216,9 +216,8 @@ fun GalleryDetailScreen(
         if (photoId != null && initialJumpDone == false) {
             val index = photos.indexOfFirst { it.id == photoId }
             if (index != -1) {
-                if (index != pagerState.currentPage) {
-                    pagerState.scrollToPage(index)
-                }
+                // 即使 index == currentPage 也执行跳转，以应对 HorizontalPager 内部键位同步导致的索引偏移
+                pagerState.scrollToPage(index)
                 initialJumpDone = true
             }
         }

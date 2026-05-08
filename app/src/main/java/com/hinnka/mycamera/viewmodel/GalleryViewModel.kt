@@ -1134,6 +1134,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         val index = currentPhotos.value.indexOfFirst { it.id == id }
         if (index != -1) {
             setCurrentPhoto(index)
+        } else {
+            // 如果 combine 后的列表还没更新，尝试从原始列表中查找
+            val photoIndex = _photos.value.indexOfFirst { it.id == id }
+            if (photoIndex != -1) {
+                setCurrentPhoto(photoIndex)
+            }
         }
     }
 

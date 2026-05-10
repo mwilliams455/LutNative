@@ -245,7 +245,6 @@ class MainActivity : ComponentActivity() {
             StartupTrace.mark("MainActivity.decorView.post")
             reportFullyDrawn()
             StartupTrace.reportFullyDrawn("MainActivity.reportFullyDrawn")
-            cameraViewModel.prewarmDepthEstimator()
         }
     }
 

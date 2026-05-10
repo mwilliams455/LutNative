@@ -3262,6 +3262,12 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     fun onShutterAnimationTriggered() {
         _canStartShutterAnimation.value = true
+        viewModelScope.launch {
+            // Delay prewarming to avoid stuttering during the initial reveal animation
+            // 150ms initial delay + 800ms animation + 250ms buffer
+            delay(1200)
+            prewarmDepthEstimator()
+        }
     }
 
     override fun onCleared() {

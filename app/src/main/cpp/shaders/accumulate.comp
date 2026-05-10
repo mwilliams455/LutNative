@@ -87,6 +87,15 @@ vec3 rgb2ycbcr(vec3 rgb) {
     return vec3(Y, Cb, Cr);
 }
 
+float sampleLuma(sampler2D s, vec2 uv, vec2 size) {
+    return rgb2ycbcr(sampleBicubic(s, uv, size).rgb).x;
+}
+
+float yccDiffSq(vec3 a, vec3 b) {
+    vec3 d = (a - b) * vec3(1.0, 0.5, 0.5);
+    return dot(d, d);
+}
+
 float sampleLocalTileWeight(vec2 uv) {
     vec2 gridPos = uv * vec2(float(pc.gridW), float(pc.gridH));
     ivec2 g = ivec2(floor(gridPos));
@@ -120,6 +129,7 @@ void main() {
     vec2 finalUV;
     finalUV.x = normalizedUV.x * pc.t0 + normalizedUV.y * pc.t1 + pc.t2;
     finalUV.y = normalizedUV.x * pc.t3 + normalizedUV.y * pc.t4 + pc.t5;
+    vec2 referenceUV = finalUV;
     
     // 2. Alignment
     vec2 nativeSize = vec2(float(pc.width) / pc.scale, float(pc.height) / pc.scale);
@@ -148,11 +158,12 @@ void main() {
         float e11 = motionPrior.errors[g1.y * pc.gridW + g1.x];
         motionError = mix(mix(e00, e10, gf.x), mix(e01, e11, gf.x), gf.y);
         
-        finalUV += alignment / nativeSize;
+        finalUV = referenceUV + alignment / nativeSize;
     }
 
     vec2 posInSource = finalUV * nativeSize;
     vec2 centerSource = floor(posInSource - 0.5) + 0.5;
+    vec2 centerReference = floor(referenceUV * nativeSize - 0.5) + 0.5;
     
     vec4 accumValue = accumulator.data[outIndex];
     float currentW = accumValue.a;
@@ -166,26 +177,86 @@ void main() {
         centerColor = sampleBicubic(rgbSampler, finalUV, nativeSize).rgb;
         centerYCC = rgb2ycbcr(centerColor);
 
-        vec3 refYCC = rgb2ycbcr(sampleBicubic(referenceSampler, finalUV, nativeSize).rgb);
-        float diff = length((centerYCC - refYCC) * vec3(1.0, 0.5, 0.5));
-        
-        float expectedVar = pc.noiseAlpha * refYCC.x + pc.noiseBeta;
-        expectedSigma = sqrt(max(expectedVar, 1e-7));
-        expectedSigma = max(expectedSigma, 0.025);
+        vec3 refYCC = rgb2ycbcr(sampleBicubic(referenceSampler, referenceUV, nativeSize).rgb);
+        float centerLuma = refYCC.x;
 
-        float ratio = diff / expectedSigma;
-        float T1 = 2.5; float T2 = 8.0;
-        if (ratio <= T1) centerRobustness = 1.0;
-        else if (ratio >= T2) centerRobustness = 0.0;
-        else centerRobustness = (T2 - ratio) / (T2 - T1);
+        float sumY = 0.0;
+        float sumY2 = 0.0;
+        for (int sy = -1; sy <= 1; sy++) {
+            for (int sx = -1; sx <= 1; sx++) {
+                vec2 refSampleUV = (centerReference + vec2(float(sx), float(sy))) / nativeSize;
+                float yRef = sampleLuma(referenceSampler, refSampleUV, nativeSize);
+                sumY += yRef;
+                sumY2 += yRef * yRef;
+            }
+        }
+        float meanY = sumY / 9.0;
+        float sigma2Spatial = max(sumY2 / 9.0 - meanY * meanY, 0.0);
+        float sigma2Noise = max(pc.noiseAlpha * centerLuma + pc.noiseBeta, 1e-10);
+        float sigma2 = max(sigma2Spatial, sigma2Noise);
+        expectedSigma = sqrt(max(sigma2, 1e-10));
+
+        float gradX = 0.5 * (
+            sampleLuma(referenceSampler, (centerReference + vec2(1.0, 0.0)) / nativeSize, nativeSize) -
+            sampleLuma(referenceSampler, (centerReference + vec2(-1.0, 0.0)) / nativeSize, nativeSize));
+        float gradY = 0.5 * (
+            sampleLuma(referenceSampler, (centerReference + vec2(0.0, 1.0)) / nativeSize, nativeSize) -
+            sampleLuma(referenceSampler, (centerReference + vec2(0.0, -1.0)) / nativeSize, nativeSize));
+        float edgeStrength = sqrt(max((gradX * gradX + gradY * gradY) / max(sigma2, 1e-8), 0.0));
+        float edgeRelax = smoothstep(1.2, 5.0, edgeStrength);
+
+        float flowMag = length(alignment);
+        float flowPenalty = 1.0;
+        if (flowMag > 15.0) {
+            flowPenalty = exp(-0.1 * (flowMag - 15.0));
+        }
+        float errorPenalty = exp(-0.015 * max(motionError, 0.0));
+        float globalPenalty = flowPenalty * errorPenalty;
+
+        float minRobustness = 1.0;
+        float sumRobustness = 0.0;
+        float weightSum = 0.0;
+        float centerR = 1.0;
+
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                vec2 sampleOffset = vec2(float(dx), float(dy));
+                vec2 refSampleUV = (centerReference + sampleOffset) / nativeSize;
+                vec2 trgSampleUV = (centerReference + sampleOffset + alignment) / nativeSize;
+
+                vec3 localRefYCC = rgb2ycbcr(sampleBicubic(referenceSampler, refSampleUV, nativeSize).rgb);
+                vec3 localTrgYCC = rgb2ycbcr(sampleBicubic(rgbSampler, trgSampleUV, nativeSize).rgb);
+                float dSq = yccDiffSq(localRefYCC, localTrgYCC);
+
+                float noiseFloor = mix(4.5 * sigma2, sigma2Noise, edgeRelax);
+                float den = mix(sigma2, sigma2Noise, edgeRelax);
+                float residual = max(0.0, dSq - noiseFloor) / max(den, 1e-10);
+                float tau = 1.0 + 1.2 * edgeRelax;
+                float r = exp(-0.5 * pow(residual / tau, 8.0)) * globalPenalty;
+
+                float spatialWeight = (dx == 0 && dy == 0) ? 2.0 : 1.0;
+                sumRobustness += r * spatialWeight;
+                weightSum += spatialWeight;
+                minRobustness = min(minRobustness, r);
+                if (dx == 0 && dy == 0) {
+                    centerR = r;
+                }
+            }
+        }
+
+        float avgRobustness = (weightSum > 0.0) ? (sumRobustness / weightSum) : minRobustness;
+        float minMix = mix(0.35, 0.15, edgeRelax);
+        float centerMix = mix(0.35, 0.55, edgeRelax);
+        float avgMix = 1.0 - minMix - centerMix;
+        centerRobustness = clamp(minMix * minRobustness +
+                                 centerMix * centerR +
+                                 avgMix * avgRobustness,
+                                 0.0, 1.0);
 
         if (isnan(centerRobustness) || isinf(centerRobustness)) centerRobustness = 0.0;
-
-        float motionPenalty = 0.015;
-        centerRobustness *= (1.0 / (1.0 + motionError * motionPenalty));
     }
 
-    float localTileWeight = sampleLocalTileWeight(finalUV);
+    float localTileWeight = sampleLocalTileWeight(referenceUV);
     float fusionMask = localTileWeight;
     int supportRadius = 0;
 
@@ -245,10 +316,12 @@ void main() {
 
             float robustness = centerRobustness;
             if (pc.isFirstFrame == 0) {
-                vec3 sampleRefYCC = rgb2ycbcr(texture(referenceSampler, sampleUV).rgb);
-                float sampleDiff = length((sampleYCC - sampleRefYCC) * vec3(1.0, 0.5, 0.5));
-                float sampleRatio = sampleDiff / expectedSigma;
-                float sampleRobustness = 1.0 - smoothstep(3.0, 9.0, sampleRatio);
+                vec2 refSampleUV = (samplePos - alignment) / nativeSize;
+                vec3 sampleRefYCC = rgb2ycbcr(texture(referenceSampler, refSampleUV).rgb);
+                float sampleDiffSq = yccDiffSq(sampleYCC, sampleRefYCC);
+                float sampleResidual = max(0.0, sampleDiffSq - 4.5 * expectedSigma * expectedSigma) /
+                                       max(expectedSigma * expectedSigma, 1e-10);
+                float sampleRobustness = exp(-0.5 * pow(sampleResidual, 8.0));
                 robustness *= sampleRobustness;
                 robustness = max(robustness, robustnessFloor);
             }

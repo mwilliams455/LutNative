@@ -36,6 +36,24 @@ struct LocalReliabilityMap {
   float detailAreaFraction = 0.0f;
 };
 
+constexpr bool kEnableYuvStackPerfLogs = false;
+
+inline void logYuvStackStage(const char *stage, double elapsedMs) {
+  if (!kEnableYuvStackPerfLogs)
+    return;
+  LOGI("YuvStackPerf[%s]: %.3f ms", stage, elapsedMs);
+}
+
+#undef TIME_START
+#undef TIME_END
+#define TIME_START(name) const auto start_##name = std::chrono::steady_clock::now()
+#define TIME_END(name)                                                         \
+  const double elapsed_##name = std::chrono::duration<double, std::milli>(     \
+                                     std::chrono::steady_clock::now() -        \
+                                     start_##name)                             \
+                                     .count();                                 \
+  logYuvStackStage(#name, elapsed_##name)
+
 inline float clamp01(float v) { return std::clamp(v, 0.0f, 1.0f); }
 
 inline float smoothstepf(float edge0, float edge1, float x) {
@@ -174,6 +192,19 @@ float computeFrameFusionWeight(const std::vector<float> &errorMap,
 }
 
 } // namespace
+
+void YuvStackPerfStats::logSummary(uint32_t outputW, uint32_t outputH,
+                                  float scale) const {
+  if (!kEnableYuvStackPerfLogs)
+    return;
+  LOGI("YuvStackPerf summary: total=%.3f ms output=%ux%u scale=%.2f frames=%zu "
+       "kept=%zu skipped=%zu effFrames=%.2f",
+       totalMs, outputW, outputH, scale, totalFrames, keptFrames, skippedFrames,
+       totalEffectiveFrames);
+  LOGI("YuvStackPerf phases: score=%.3f process=%.3f norm=%.3f copy=%.3f",
+       scoreCalculationMs, allFramesProcessingMs, normalizationDispatchMs,
+       outputCopyMs);
+}
 
 VulkanImageStacker::VulkanImageStacker(uint32_t w, uint32_t h, bool sr)
     : width(w), height(h), enableSuperRes(sr) {
@@ -822,13 +853,15 @@ bool VulkanImageStacker::addFrame(AHardwareBuffer *buffer) {
 }
 
 bool VulkanImageStacker::processFrame(AHardwareBuffer *buffer, float frameScore,
-                                      GrayImage &cachedGray) {
-  using PerfClock = std::chrono::high_resolution_clock;
+                                      GrayImage &cachedGray, YuvStackPerfStats &perf) {
+  using PerfClock = std::chrono::steady_clock;
   auto elapsedMs = [](const PerfClock::time_point &start,
                       const PerfClock::time_point &end) {
     return std::chrono::duration<double, std::milli>(end - start).count();
   };
   VulkanImage input;
+  perf.totalFrames++;
+
   // Use existing conversion if available (from first frame) to compatible with
   // immutable sampler
   TIME_START(importBuffer);
@@ -840,7 +873,7 @@ bool VulkanImageStacker::processFrame(AHardwareBuffer *buffer, float frameScore,
   TIME_END(importBuffer);
 
   bool currentIsFirstFrame = isFirstFrame;
-  LOGI("processFrame: Start. isFirstFrame=%d", currentIsFirstFrame);
+  // LOGI("processFrame: Start. isFirstFrame=%d", currentIsFirstFrame);
 
   VulkanManager &vm = VulkanManager::getInstance();
   VkDevice device = vm.getDevice();
@@ -1040,8 +1073,8 @@ bool VulkanImageStacker::processFrame(AHardwareBuffer *buffer, float frameScore,
       frameWeight = computeFrameFusionWeight(alignmentErrorMap, sharpnessRatio,
                                              localMap);
       float p90Err = computeScalarStats(alignmentErrorMap).p90;
-      LOGI("YUV fusion: sharpnessRatio=%.3f frameWeight=%.3f flatGood=%.3f flatArea=%.3f detailArea=%.3f p90Err=%.3f p90ErrRms=%.3f",
-           sharpnessRatio, frameWeight, localMap.flatGoodFraction,
+      LOGI("YUV fusion: frame=%zu sharpnessRatio=%.3f frameWeight=%.3f flatGood=%.3f flatArea=%.3f detailArea=%.3f p90Err=%.3f p90ErrRms=%.3f",
+           perf.totalFrames - 1, sharpnessRatio, frameWeight, localMap.flatGoodFraction,
            localMap.flatAreaFraction, localMap.detailAreaFraction,
            p90Err, std::sqrt(std::max(p90Err, 0.0f)));
     }
@@ -1074,8 +1107,11 @@ bool VulkanImageStacker::processFrame(AHardwareBuffer *buffer, float frameScore,
   if (!currentIsFirstFrame && pc.frameWeight < 0.12f) {
     input.release(device);
     isFirstFrame = false;
-    return true;
+    perf.skippedFrames++;
+    return false;
   }
+  perf.keptFrames++;
+  perf.totalEffectiveFrames += pc.frameWeight;
 
   double yuvToRgbaGpuMs = -1.0;
   double tensorGpuMs = -1.0;
@@ -1527,6 +1563,9 @@ bool VulkanImageStacker::processStack(uint32_t *outBitmap, uint32_t outWidth,
   // Lower CPU priority for this thread during heavy processing
   setpriority(PRIO_PROCESS, 0, 10);
 
+  YuvStackPerfStats perf;
+  const auto startTotal = std::chrono::steady_clock::now();
+
   // Process all queued frames first
   isFirstFrame = true;
   if (pendingFrames.empty()) {
@@ -1578,6 +1617,7 @@ bool VulkanImageStacker::processStack(uint32_t *outBitmap, uint32_t outWidth,
     }
   }
   TIME_END(scoreCalculation);
+  perf.scoreCalculationMs = elapsed_scoreCalculation;
 
   // 2. Sort pendingFrames by score descending
   std::sort(
@@ -1599,8 +1639,8 @@ bool VulkanImageStacker::processStack(uint32_t *outBitmap, uint32_t outWidth,
   for (auto &frame : pendingFrames) {
     //    LOGI("processStack: Processing frame %d, score %f", frameIdx,
     //    frame.score);
-    if (!processFrame(frame.buffer, frame.score, frame.grayY)) {
-      LOGE("processStack: Failed to process frame %d", frameIdx);
+    if (!processFrame(frame.buffer, frame.score, frame.grayY, perf)) {
+      // LOGW("processStack: Skipped or failed frame %d", frameIdx);
     }
     // Release grayscale cache to free memory as soon as it's consumed
     frame.grayY.data.clear();
@@ -1614,6 +1654,7 @@ bool VulkanImageStacker::processStack(uint32_t *outBitmap, uint32_t outWidth,
   resetDescriptorHandles();
 
   TIME_END(allFramesProcessing);
+  perf.allFramesProcessingMs = elapsed_allFramesProcessing;
 
   if (!outBitmap || isFirstFrame) // Check again after processing
     return false;
@@ -1832,6 +1873,7 @@ bool VulkanImageStacker::processStack(uint32_t *outBitmap, uint32_t outWidth,
   vm.endSingleTimeCommands(cb);
   vkQueueWaitIdle(vm.getComputeQueue());
   TIME_END(normalizationDispatch);
+  perf.normalizationDispatchMs = elapsed_normalizationDispatch;
 
   // 2. Map and copy to bitmap
   TIME_START(outputCopy);
@@ -1848,10 +1890,16 @@ bool VulkanImageStacker::processStack(uint32_t *outBitmap, uint32_t outWidth,
   }
   vkUnmapMemory(device, stagingMemory);
   TIME_END(outputCopy);
+  perf.outputCopyMs = elapsed_outputCopy;
 
   vkFreeDescriptorSets(device, descriptorPool, numTiles, normalizeSets.data());
   std::fill(normalizeSets.begin(), normalizeSets.end(),
             (VkDescriptorSet)VK_NULL_HANDLE);
+
+  perf.totalMs = std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - startTotal)
+                     .count();
+  perf.logSummary(outWidth, outHeight, scale);
 
   return true;
 }

@@ -5,6 +5,21 @@
 #include "vulkan_utils.h"
 #include <vector>
 
+struct YuvStackPerfStats {
+  double totalMs = 0.0;
+  double scoreCalculationMs = 0.0;
+  double allFramesProcessingMs = 0.0;
+  double normalizationDispatchMs = 0.0;
+  double outputCopyMs = 0.0;
+
+  size_t totalFrames = 0;
+  size_t keptFrames = 0;
+  size_t skippedFrames = 0;
+  double totalEffectiveFrames = 0.0;
+
+  void logSummary(uint32_t outputW, uint32_t outputH, float scale) const;
+};
+
 class VulkanImageStacker {
 public:
   VulkanImageStacker(uint32_t width, uint32_t height, bool enableSuperRes);
@@ -123,7 +138,7 @@ private:
   void releaseVulkanResources();
   void createPipelines(VkSampler immutableSampler);
   bool processFrame(AHardwareBuffer *buffer, float frameScore,
-                    GrayImage &cachedGray);
+                    GrayImage &cachedGray, YuvStackPerfStats &perf);
   void resetDescriptorHandles();
   void releasePendingFrames();
 };

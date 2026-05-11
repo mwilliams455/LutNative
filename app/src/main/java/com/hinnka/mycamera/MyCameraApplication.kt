@@ -34,7 +34,7 @@ class MyCameraApplication : Application() {
         phantomService = StartupTrace.measure("PhantomService()") {
             PhantomService(this)
         }
-        AppUpdateManager.startSilentUpdate(this)
+//        AppUpdateManager.startSilentUpdate(this)
 
         val userPreferencesRepository = contentRepository.userPreferencesRepository
         MainScope().launch {

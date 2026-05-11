@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.FilterVintage
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Icon
@@ -92,6 +93,10 @@ fun ZoomControlBar(
             .map { it.intrinsicZoomRatio }
     }
     val zoomStops = viewModel.allZoomStops(lensZoomStops, mainCamera, currentCamera, customFocalLengths, hiddenFocalLengths)
+
+    val macroCameras = remember(availableCameras) {
+        availableCameras.filter { it.lensType == LensType.BACK_MACRO }
+    }
 
     val cameraState by viewModel.state.collectAsState()
     val minZoom = remember(cameraState.availableCameras) {
@@ -293,6 +298,8 @@ fun ZoomControlBar(
                     lensStops = lensZoomStops,
                     customLensStops = customLensZoomStops,
                     stops = effectiveStops,
+                    macroCameras = macroCameras,
+                    currentCameraId = currentCameraIdState,
                     mainCamera = mainCamera,
                     displayMode = displayMode,
                     onZoomChange = { stop ->
@@ -305,6 +312,7 @@ fun ZoomControlBar(
                         customZoomStop = null
                         replacedStopIndex = -1
                     },
+                    onLensSwitch = onLensSwitch,
                     modifier = Modifier.fillMaxHeight()
                 )
             }
@@ -335,9 +343,12 @@ fun ZoomRuler(
     lensStops: List<Float>,
     customLensStops: List<Float>,
     stops: List<Float>,
+    macroCameras: List<CameraInfo>,
+    currentCameraId: String,
     mainCamera: CameraInfo?,
     displayMode: ZoomDisplayMode,
     onZoomChange: (Float) -> Unit,
+    onLensSwitch: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val activeColor = Color(0xFFFFD700)
@@ -347,19 +358,13 @@ fun ZoomRuler(
 
     Row(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-            .pointerInput(Unit) {
-                detectTapGestures { offset ->
-                    val width = size.width
-                    val stepWidth = width / stopsState.size
-                    val index = (offset.x / stepWidth).toInt().coerceIn(0, stopsState.lastIndex)
-                    onZoomChange(stopsState[index])
-                }
-            },
+            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(16.dp)),
         horizontalArrangement = Arrangement.SpaceAround,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        val selectedStopIndex = stops.indices.minByOrNull { abs(stops[it] - zoomRatio) }
+        val isCurrentMacro = macroCameras.any { it.cameraId == currentCameraId }
+        val selectedStopIndex = if (isCurrentMacro) -1 else stops.indices.minByOrNull { abs(stops[it] - zoomRatio) }
+
         stops.forEachIndexed { index, stop ->
             val isSelected = index == selectedStopIndex && abs(stop - zoomRatio) <= 0.01f
             val isCustomLensStop = customLensStops.any { abs(it - stop) <= 0.01f }
@@ -382,8 +387,44 @@ fun ZoomRuler(
                 textDecoration = if (lensStops.contains(stop)) TextDecoration.Underline else TextDecoration.None
             )
 
-            Box(modifier = Modifier.size(32.dp).autoRotate(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .autoRotate()
+                    .pointerInput(stop) {
+                        detectTapGestures { onZoomChange(stop) }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
                 Text(text, style = style)
+            }
+        }
+
+        if (macroCameras.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .width(1.dp)
+                    .height(12.dp)
+                    .background(Color.White.copy(alpha = 0.2f))
+            )
+            macroCameras.forEach { macroCam ->
+                val isSelected = macroCam.cameraId == currentCameraId
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .autoRotate()
+                        .pointerInput(macroCam.cameraId) {
+                            detectTapGestures { onLensSwitch(macroCam.cameraId) }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FilterVintage,
+                        contentDescription = "Macro",
+                        tint = if (isSelected) activeColor else inactiveColor,
+                        modifier = Modifier.size(if (isSelected) 16.dp else 14.dp)
+                    )
+                }
             }
         }
     }

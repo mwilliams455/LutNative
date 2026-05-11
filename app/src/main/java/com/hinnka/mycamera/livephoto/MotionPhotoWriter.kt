@@ -113,6 +113,7 @@ object MotionPhotoWriter {
                     val segmentString = String(segmentData, StandardCharsets.UTF_8)
                     
                     val regexes = listOf(
+                        """Item:Length="(\d+)"""".toRegex(),
                         """MicroVideoOffset="(\d+)"""".toRegex(),
                         """VideoLength="(\d+)"""".toRegex()
                     )

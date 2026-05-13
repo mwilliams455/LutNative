@@ -512,6 +512,7 @@
     <string name="frame_editor_layout_padding">Padding (dp)</string>
     <string name="frame_editor_layout_background">Background Color</string>
     <string name="frame_editor_layout_border_color">Border Color</string>
+    <string name="frame_editor_color_opacity">Opacity</string>
     <string name="frame_editor_layout_line_spacing">Line Spacing (dp)</string>
     <string name="frame_editor_layout_border_width">Border Width (dp)</string>
     <string name="frame_editor_image_hint">Image frames use a transparent PNG or WebP. The selected asset will be copied into app storage.</string>

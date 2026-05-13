@@ -6,9 +6,11 @@ import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +55,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
@@ -75,8 +79,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -93,6 +102,7 @@ import com.hinnka.mycamera.frame.FrameElementDraft
 import com.hinnka.mycamera.frame.FramePosition
 import com.hinnka.mycamera.frame.LogoType
 import com.hinnka.mycamera.frame.TextType
+import com.hinnka.mycamera.ui.components.CustomSliderThinThumb
 import com.hinnka.mycamera.ui.theme.AccentOrange
 import com.hinnka.mycamera.viewmodel.CameraViewModel
 import kotlinx.coroutines.Dispatchers
@@ -101,6 +111,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1333,25 +1344,266 @@ private fun ColorField(
     value: Int,
     onValueChange: (Int) -> Unit
 ) {
-    var text by remember(value) { mutableStateOf(colorToHex(value)) }
-    OutlinedTextField(
-        value = text,
-        onValueChange = {
-            text = it
-            parseColorOrNull(it)?.let(onValueChange)
-        },
-        label = { Text(label) },
-        singleLine = true,
-        trailingIcon = {
+    var showPicker by remember { mutableStateOf(false) }
+
+    Surface(
+        onClick = { showPicker = true },
+        color = Color.White.copy(alpha = 0.05f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = label,
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = colorToHex(value),
+                    color = Color.White.copy(alpha = 0.88f),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
             Box(
                 modifier = Modifier
-                    .size(18.dp)
+                    .size(36.dp)
                     .clip(RoundedCornerShape(4.dp))
+                    .checkerboardBackground()
                     .background(Color(value))
+                    .border(1.dp, Color.White.copy(alpha = 0.24f), RoundedCornerShape(4.dp))
             )
+        }
+    }
+
+    if (showPicker) {
+        ColorPickerDialog(
+            title = label,
+            initialColor = value,
+            onDismiss = { showPicker = false },
+            onConfirm = { color ->
+                showPicker = false
+                onValueChange(color)
+            }
+        )
+    }
+}
+
+@Composable
+private fun ColorPickerDialog(
+    title: String,
+    initialColor: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    val hsv = remember(initialColor) {
+        FloatArray(3).also { AndroidColor.colorToHSV(initialColor, it) }
+    }
+    var hue by remember(initialColor) { mutableStateOf(hsv[0]) }
+    var saturation by remember(initialColor) { mutableStateOf(hsv[1]) }
+    var value by remember(initialColor) { mutableStateOf(hsv[2]) }
+    var alpha by remember(initialColor) { mutableStateOf((initialColor ushr 24) / 255f) }
+    val selectedColor = hsvToColor(hue, saturation, value, alpha)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .checkerboardBackground()
+                            .background(Color(selectedColor))
+                            .border(1.dp, Color.White.copy(alpha = 0.24f), RoundedCornerShape(8.dp))
+                    )
+                    Text(
+                        text = colorToHex(selectedColor),
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                SaturationValuePicker(
+                    hue = hue,
+                    saturation = saturation,
+                    value = value,
+                    onColorPositionChange = { newSaturation, newValue ->
+                        saturation = newSaturation
+                        value = newValue
+                    }
+                )
+
+                HuePicker(
+                    hue = hue,
+                    onHueChange = { hue = it }
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = stringResource(R.string.frame_editor_color_opacity),
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            text = "${(alpha * 100).roundToInt()}%",
+                            color = Color.White.copy(alpha = 0.86f),
+                            fontSize = 12.sp
+                        )
+                    }
+                    CustomSliderThinThumb(
+                        value = alpha,
+                        onValueChange = { alpha = it.coerceIn(0f, 1f) },
+                    )
+                }
+            }
         },
-        modifier = Modifier.fillMaxWidth()
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selectedColor) }) {
+                Text(stringResource(R.string.confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+        containerColor = Color(0xFF1A1A1A),
+        textContentColor = Color.White,
+        titleContentColor = Color.White
     )
+}
+
+@Composable
+private fun SaturationValuePicker(
+    hue: Float,
+    saturation: Float,
+    value: Float,
+    onColorPositionChange: (Float, Float) -> Unit
+) {
+    fun updatePosition(offset: Offset, width: Float, height: Float) {
+        if (width <= 0f || height <= 0f) return
+        onColorPositionChange(
+            (offset.x / width).coerceIn(0f, 1f),
+            (1f - offset.y / height).coerceIn(0f, 1f)
+        )
+    }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .pointerInput(hue) {
+                detectDragGestures(
+                    onDragStart = { offset -> updatePosition(offset, size.width.toFloat(), size.height.toFloat()) },
+                    onDrag = { change, _ -> updatePosition(change.position, size.width.toFloat(), size.height.toFloat()) }
+                )
+            }
+    ) {
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(Color.White, Color.hsv(hue, 1f, 1f))
+            )
+        )
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color.Transparent, Color.Black)
+            )
+        )
+        val marker = Offset(saturation * size.width, (1f - value) * size.height)
+        drawCircle(Color.Black.copy(alpha = 0.45f), radius = 11.dp.toPx(), center = marker)
+        drawCircle(Color.White, radius = 9.dp.toPx(), center = marker)
+        drawCircle(Color.hsv(hue, saturation, value), radius = 7.dp.toPx(), center = marker)
+    }
+}
+
+@Composable
+private fun HuePicker(
+    hue: Float,
+    onHueChange: (Float) -> Unit
+) {
+    fun updateHue(offset: Offset, width: Float) {
+        if (width <= 0f) return
+        onHueChange(((offset.x / width).coerceIn(0f, 1f) * 360f).coerceIn(0f, 360f))
+    }
+
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(20.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { offset -> updateHue(offset, size.width.toFloat()) },
+                    onDrag = { change, _ -> updateHue(change.position, size.width.toFloat()) }
+                )
+            }
+    ) {
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color.Red,
+                    Color.Yellow,
+                    Color.Green,
+                    Color.Cyan,
+                    Color.Blue,
+                    Color.Magenta,
+                    Color.Red
+                )
+            )
+        )
+        val x = (hue / 360f).coerceIn(0f, 1f) * (size.width - 20.dp.toPx()) + 10.dp.toPx()
+        drawCircle(Color.Black.copy(alpha = 0.45f), radius = 10.dp.toPx(), center = Offset(x, size.height / 2f))
+        drawCircle(Color.White, radius = 8.dp.toPx(), center = Offset(x, size.height / 2f))
+        drawCircle(Color.hsv(hue, 1f, 1f), radius = 6.dp.toPx(), center = Offset(x, size.height / 2f))
+    }
+}
+
+private fun Modifier.checkerboardBackground(): Modifier {
+    return drawBehind {
+        drawRect(Color.White.copy(alpha = 0.22f))
+        val tileSize = 6.dp.toPx()
+        var y = 0f
+        var row = 0
+        while (y < size.height) {
+            var x = 0f
+            var column = 0
+            while (x < size.width) {
+                if ((row + column) % 2 == 0) {
+                    drawRect(
+                        color = Color.Black.copy(alpha = 0.12f),
+                        topLeft = Offset(x, y),
+                        size = Size(
+                            width = tileSize.coerceAtMost(size.width - x),
+                            height = tileSize.coerceAtMost(size.height - y)
+                        )
+                    )
+                }
+                x += tileSize
+                column++
+            }
+            y += tileSize
+            row++
+        }
+    }
 }
 
 @Composable
@@ -1570,8 +1822,15 @@ private fun colorToHex(color: Int): String {
     }
 }
 
-private fun parseColorOrNull(value: String): Int? {
-    return runCatching { AndroidColor.parseColor(value) }.getOrNull()
+private fun hsvToColor(hue: Float, saturation: Float, value: Float, alpha: Float): Int {
+    return AndroidColor.HSVToColor(
+        (alpha.coerceIn(0f, 1f) * 255).roundToInt(),
+        floatArrayOf(
+            hue.coerceIn(0f, 360f),
+            saturation.coerceIn(0f, 1f),
+            value.coerceIn(0f, 1f)
+        )
+    )
 }
 
 @Composable

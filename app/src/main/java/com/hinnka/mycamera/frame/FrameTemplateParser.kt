@@ -163,6 +163,9 @@ object FrameTemplateParser {
                 if (template.layout.borderWidthDp > 0) {
                     put("borderWidth", template.layout.borderWidthDp)
                 }
+                if (template.layout.photoCornerRadiusDp > 0) {
+                    put("photoCornerRadius", template.layout.photoCornerRadiusDp)
+                }
                 if (template.layout.photoShadowEnabled) {
                     put("photoShadowEnabled", true)
                 }
@@ -207,6 +210,7 @@ object FrameTemplateParser {
         if (template.layout.heightDp < 0) errors += "layout.height"
         if (template.layout.paddingDp < 0) errors += "layout.padding"
         if (template.layout.borderWidthDp < 0) errors += "layout.borderWidth"
+        if (template.layout.photoCornerRadiusDp < 0) errors += "layout.photoCornerRadius"
         if (template.layout.photoShadowRadiusDp < 0) errors += "layout.photoShadowRadius"
         if (template.layout.position == FramePosition.IMAGE &&
             template.layout.imageResName.isNullOrBlank() &&
@@ -263,6 +267,7 @@ object FrameTemplateParser {
             lineSpacingDp = obj.optInt("lineSpacing", 8),
             paddingDp = obj.optInt("padding", 16),
             borderWidthDp = obj.optInt("borderWidth", 0),
+            photoCornerRadiusDp = obj.optInt("photoCornerRadius", 0),
             photoShadowEnabled = obj.optBoolean("photoShadowEnabled", false),
             photoShadowRadiusDp = obj.optInt("photoShadowRadius", 0),
             photoShadowOffsetXDp = obj.optInt("photoShadowOffsetX", 0),

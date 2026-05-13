@@ -70,6 +70,7 @@ data class FrameLayout(
     val lineSpacingDp: Int = 8, // 行间距
     val paddingDp: Int = 16,
     val borderWidthDp: Int = 0,  // 四周边框宽度（仅 BORDER 模式使用）
+    val photoCornerRadiusDp: Int = 0,
     val photoShadowEnabled: Boolean = false,
     val photoShadowRadiusDp: Int = 0,
     val photoShadowOffsetXDp: Int = 0,

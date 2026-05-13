@@ -515,6 +515,7 @@
     <string name="frame_editor_color_opacity">Opacity</string>
     <string name="frame_editor_layout_line_spacing">Line Spacing (dp)</string>
     <string name="frame_editor_layout_border_width">Border Width (dp)</string>
+    <string name="frame_editor_photo_corner_radius">Photo Corner Radius (dp)</string>
     <string name="frame_editor_photo_shadow">Photo Shadow</string>
     <string name="frame_editor_photo_shadow_radius">Shadow Blur (dp)</string>
     <string name="frame_editor_photo_shadow_offset_x">Shadow X Offset (dp)</string>

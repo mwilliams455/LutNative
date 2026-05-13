@@ -5,6 +5,7 @@ import android.graphics.*
 import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.Drawable
 import android.util.TypedValue
+import androidx.core.graphics.withSave
 import androidx.core.graphics.drawable.toBitmap
 import com.hinnka.mycamera.R
 import com.hinnka.mycamera.gallery.MediaMetadata
@@ -37,6 +38,7 @@ class FrameRenderer(
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val photoShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val photoClipPath = Path()
 
     /**
      * 渲染带边框的照片
@@ -160,7 +162,7 @@ class FrameRenderer(
             borderWidth = borderWidth,
             scale = scale
         )
-        canvas.drawBitmap(originalBitmap, photoLeft, photoTop, null)
+        drawPhotoBitmap(canvas, originalBitmap, layout, photoLeft, photoTop, scale)
 
         // 绘制边框内容
         when (layout.position) {
@@ -252,6 +254,34 @@ class FrameRenderer(
         return output
     }
 
+    private fun drawPhotoBitmap(
+        canvas: Canvas,
+        originalBitmap: Bitmap,
+        layout: FrameLayout,
+        photoLeft: Float,
+        photoTop: Float,
+        scale: Float
+    ) {
+        val cornerRadius = dpToPx(layout.photoCornerRadiusDp.coerceAtLeast(0)).toFloat() * scale
+        if (cornerRadius <= 0f) {
+            canvas.drawBitmap(originalBitmap, photoLeft, photoTop, null)
+            return
+        }
+
+        val photoRect = RectF(
+            photoLeft,
+            photoTop,
+            photoLeft + originalBitmap.width,
+            photoTop + originalBitmap.height
+        )
+        photoClipPath.reset()
+        photoClipPath.addRoundRect(photoRect, cornerRadius, cornerRadius, Path.Direction.CW)
+        canvas.withSave {
+            clipPath(photoClipPath)
+            drawBitmap(originalBitmap, photoLeft, photoTop, null)
+        }
+    }
+
     private fun drawPhotoBorder(
         canvas: Canvas,
         layout: FrameLayout,
@@ -305,6 +335,7 @@ class FrameRenderer(
         if (shadowAlpha == 0) return
 
         val radius = dpToPx(layout.photoShadowRadiusDp.coerceAtLeast(0)).toFloat() * scale
+        val cornerRadius = dpToPx(layout.photoCornerRadiusDp.coerceAtLeast(0)).toFloat() * scale
         val offsetX = dpToPx(layout.photoShadowOffsetXDp) * scale
         val offsetY = dpToPx(layout.photoShadowOffsetYDp) * scale
 
@@ -313,13 +344,13 @@ class FrameRenderer(
         photoShadowPaint.color = Color.WHITE
         photoShadowPaint.setShadowLayer(radius, offsetX, offsetY, layout.photoShadowColor)
 
-        canvas.drawRect(
+        val shadowRect = RectF(
             photoLeft,
             photoTop,
             photoLeft + photoWidth,
-            photoTop + photoHeight,
-            photoShadowPaint
+            photoTop + photoHeight
         )
+        canvas.drawRoundRect(shadowRect, cornerRadius, cornerRadius, photoShadowPaint)
         photoShadowPaint.clearShadowLayer()
     }
 

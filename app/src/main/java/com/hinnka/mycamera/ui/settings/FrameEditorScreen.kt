@@ -594,6 +594,13 @@ private fun FrameBasicTab(
                             }
                         )
                         if (draft.layout.borderWidthDp > 0) {
+                            IntField(
+                                label = stringResource(R.string.frame_editor_photo_corner_radius),
+                                value = draft.layout.photoCornerRadiusDp,
+                                onValueChange = {
+                                    onDraftChange(draft.copy(layout = draft.layout.copy(photoCornerRadiusDp = it.coerceAtLeast(0))))
+                                }
+                            )
                             SwitchRow(
                                 label = stringResource(R.string.frame_editor_photo_shadow),
                                 checked = draft.layout.photoShadowEnabled,

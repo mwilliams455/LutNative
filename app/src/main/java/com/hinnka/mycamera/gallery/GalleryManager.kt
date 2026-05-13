@@ -508,11 +508,9 @@ object GalleryManager {
         chromaNoiseReduction: Float = 0f
     ) {
         val existingJob = detailHdrBuildJobs[photoId]
-        if (existingJob?.isActive == true) {
-            return
-        }
         val job = processingScope.launch {
             try {
+                existingJob?.join()
                 buildDetailHdrCache(
                     context = context,
                     photoId = photoId,
@@ -522,7 +520,7 @@ object GalleryManager {
                     chromaNoiseReduction = chromaNoiseReduction
                 )
             } finally {
-                detailHdrBuildJobs.remove(photoId)
+                detailHdrBuildJobs.remove(photoId, coroutineContext[Job])
             }
         }
         detailHdrBuildJobs[photoId] = job
@@ -2752,6 +2750,7 @@ object GalleryManager {
             try {
                 val photoDir = getPhotoDir(context, photoId, true)
                 val photoFile = File(photoDir, PHOTO_FILE)
+                val tempPhotoFile = File(photoDir, "raw_refresh_temp.jpg")
                 val dngFile = File(photoDir, DNG_FILE)
                 val thumbnailFile = File(photoDir, THUMBNAIL_FILE)
 
@@ -2780,9 +2779,17 @@ object GalleryManager {
                 )
 
                 if (processedBitmap != null) {
-                    // 保存为 original.jpg
-                    FileOutputStream(photoFile).use { out ->
+                    // 先写临时文件再替换，避免详情页或 HDR 任务读到半写入的 original.jpg。
+                    FileOutputStream(tempPhotoFile).use { out ->
                         processedBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                    }
+                    if (photoFile.exists() && !photoFile.delete()) {
+                        tempPhotoFile.delete()
+                        return@withContext null
+                    }
+                    if (!tempPhotoFile.renameTo(photoFile)) {
+                        tempPhotoFile.delete()
+                        return@withContext null
                     }
                     // 刷新 RAW 后，AI 降噪结果已失效，清理之
                     getAiDenoiseFile(context, photoId).takeIf { it.exists() }?.delete()
@@ -2809,6 +2816,7 @@ object GalleryManager {
                 processedBitmap
             } catch (e: Exception) {
                 PLog.e(TAG, "Failed to refresh RAW preview", e)
+                File(getPhotoDir(context, photoId, true), "raw_refresh_temp.jpg").takeIf { it.exists() }?.delete()
                 null
             }
         }

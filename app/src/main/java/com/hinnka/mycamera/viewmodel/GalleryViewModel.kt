@@ -472,11 +472,16 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         bokeh.recycle()
                     }
                 }
-                val updatedMetadata = metadata.copy(
-                    hasAiDenoisedBase = true,
-                    aiDenoiseStrength = strength
-                )
-                GalleryManager.saveMetadata(context, photo.id, updatedMetadata)
+                val updatedMetadata = GalleryManager.updateMetadata(context, photo.id) { current ->
+                    current.copy(
+                        hasAiDenoisedBase = true,
+                        aiDenoiseStrength = strength
+                    )
+                } ?: run {
+                    _isAiDenoising.value = false
+                    withContext(Dispatchers.Main) { onComplete(false) }
+                    return@launch
+                }
                 currentMediaMetadata = updatedMetadata
                 
                 val updatedPhotos = _photos.value.map { p ->
@@ -770,7 +775,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         sourceUri = fresh.sourceUri,
                         isMotionPhoto = fresh.isMotionPhoto,
                         isBurstPhoto = fresh.isBurstPhoto,
-                        metadata = existing.metadata ?: fresh.metadata,
+                        metadata = fresh.metadata ?: existing.metadata,
                         relatedPhoto = fresh.relatedPhoto
                     )
                 } ?: fresh
@@ -2672,25 +2677,10 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val context = getApplication<Application>()
-                val currentMetadata = photo.metadata ?: photo.relatedPhoto?.metadata ?: run {
-                    onComplete(false)
-                    return@launch
+                val updatedMetadata = updatePhotoMetadata(photo.id) {
+                    it.copy(manualHdrEffectEnabled = !it.manualHdrEffectEnabled)
                 }
-                val updatedMetadata = currentMetadata.copy(
-                    manualHdrEffectEnabled = !currentMetadata.manualHdrEffectEnabled
-                )
-                val success = GalleryManager.saveMetadata(context, photo.id, updatedMetadata)
-                if (success) {
-                    val updatedPhotos = _photos.value.map { p ->
-                        if (p.id == photo.id) p.copy(metadata = updatedMetadata) else p
-                    }
-                    _photos.value = updatedPhotos
-                    if (_latestPhoto.value?.id == photo.id) {
-                        _latestPhoto.value = _latestPhoto.value?.copy(metadata = updatedMetadata)
-                    }
-                    if (currentPhotoMetadataId == photo.id) {
-                        currentMediaMetadata = updatedMetadata
-                    }
+                if (updatedMetadata != null) {
                     invalidatePreviewCache(photo.id)
                     if (updatedMetadata.manualHdrEffectEnabled) {
                         GalleryManager.queueDetailHdrCacheBuild(
@@ -2706,7 +2696,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     }
                     photoRefreshKeys[photo.id] = System.currentTimeMillis()
                 }
-                onComplete(success)
+                onComplete(updatedMetadata != null)
             } catch (e: Exception) {
                 PLog.e(TAG, "Failed to toggle manual HDR enhance", e)
                 onComplete(false)
@@ -2726,26 +2716,13 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             try {
                 val context = getApplication<Application>()
-                val currentMetadata = photo.metadata ?: photo.relatedPhoto?.metadata ?: run {
-                    onComplete(false)
-                    return@launch
+                val updatedMetadata = updatePhotoMetadata(photo.id) {
+                    it.copy(
+                        manualHdrEffectEnabled = true,
+                        hdrEffectStrength = HdrGainmapStrength.coerce(strength)
+                    )
                 }
-                val updatedMetadata = currentMetadata.copy(
-                    manualHdrEffectEnabled = true,
-                    hdrEffectStrength = HdrGainmapStrength.coerce(strength)
-                )
-                val success = GalleryManager.saveMetadata(context, photo.id, updatedMetadata)
-                if (success) {
-                    val updatedPhotos = _photos.value.map { p ->
-                        if (p.id == photo.id) p.copy(metadata = updatedMetadata) else p
-                    }
-                    _photos.value = updatedPhotos
-                    if (_latestPhoto.value?.id == photo.id) {
-                        _latestPhoto.value = _latestPhoto.value?.copy(metadata = updatedMetadata)
-                    }
-                    if (currentPhotoMetadataId == photo.id) {
-                        currentMediaMetadata = updatedMetadata
-                    }
+                if (updatedMetadata != null) {
                     invalidatePreviewCache(photo.id)
                     GalleryManager.deleteDetailHdrFile(context, photo.id)
                     GalleryManager.queueDetailHdrCacheBuild(
@@ -2758,7 +2735,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     )
                     photoRefreshKeys[photo.id] = System.currentTimeMillis()
                 }
-                onComplete(success)
+                onComplete(updatedMetadata != null)
             } catch (e: Exception) {
                 PLog.e(TAG, "Failed to update manual HDR strength", e)
                 onComplete(false)

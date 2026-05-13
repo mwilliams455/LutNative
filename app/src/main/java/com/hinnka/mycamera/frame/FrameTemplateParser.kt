@@ -2,6 +2,7 @@ package com.hinnka.mycamera.frame
 
 import android.content.Context
 import android.graphics.Color
+import androidx.compose.runtime.snapshots.toInt
 import com.hinnka.mycamera.utils.PLog
 import org.json.JSONArray
 import org.json.JSONObject
@@ -162,6 +163,21 @@ object FrameTemplateParser {
                 if (template.layout.borderWidthDp > 0) {
                     put("borderWidth", template.layout.borderWidthDp)
                 }
+                if (template.layout.photoShadowEnabled) {
+                    put("photoShadowEnabled", true)
+                }
+                if (template.layout.photoShadowRadiusDp > 0) {
+                    put("photoShadowRadius", template.layout.photoShadowRadiusDp)
+                }
+                if (template.layout.photoShadowOffsetXDp != 0) {
+                    put("photoShadowOffsetX", template.layout.photoShadowOffsetXDp)
+                }
+                if (template.layout.photoShadowOffsetYDp != 2) {
+                    put("photoShadowOffsetY", template.layout.photoShadowOffsetYDp)
+                }
+                if (template.layout.photoShadowColor != 0xCC000000.toInt()) {
+                    put("photoShadowColor", colorToHex(template.layout.photoShadowColor))
+                }
                 template.layout.imageResName?.let { put("imageResName", it) }
                 template.layout.imagePath?.let { put("imagePath", it) }
             })
@@ -191,6 +207,7 @@ object FrameTemplateParser {
         if (template.layout.heightDp < 0) errors += "layout.height"
         if (template.layout.paddingDp < 0) errors += "layout.padding"
         if (template.layout.borderWidthDp < 0) errors += "layout.borderWidth"
+        if (template.layout.photoShadowRadiusDp < 0) errors += "layout.photoShadowRadius"
         if (template.layout.position == FramePosition.IMAGE &&
             template.layout.imageResName.isNullOrBlank() &&
             template.layout.imagePath.isNullOrBlank()
@@ -246,6 +263,11 @@ object FrameTemplateParser {
             lineSpacingDp = obj.optInt("lineSpacing", 8),
             paddingDp = obj.optInt("padding", 16),
             borderWidthDp = obj.optInt("borderWidth", 0),
+            photoShadowEnabled = obj.optBoolean("photoShadowEnabled", false),
+            photoShadowRadiusDp = obj.optInt("photoShadowRadius", 0),
+            photoShadowOffsetXDp = obj.optInt("photoShadowOffsetX", 0),
+            photoShadowOffsetYDp = obj.optInt("photoShadowOffsetY", 2),
+            photoShadowColor = parseColor(obj.optString("photoShadowColor", "#CC000000")),
             imageResName = obj.optString("imageResName").takeIf { it.isNotEmpty() },
             imagePath = obj.optString("imagePath").takeIf { it.isNotEmpty() }
         )

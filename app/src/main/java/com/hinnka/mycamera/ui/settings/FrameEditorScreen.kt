@@ -593,6 +593,58 @@ private fun FrameBasicTab(
                                 onDraftChange(draft.copy(layout = draft.layout.copy(borderWidthDp = it.coerceAtLeast(0))))
                             }
                         )
+                        if (draft.layout.borderWidthDp > 0) {
+                            SwitchRow(
+                                label = stringResource(R.string.frame_editor_photo_shadow),
+                                checked = draft.layout.photoShadowEnabled,
+                                onCheckedChange = {
+                                    onDraftChange(
+                                        draft.copy(
+                                            layout = draft.layout.copy(
+                                                photoShadowEnabled = it,
+                                                photoShadowRadiusDp = if (it && draft.layout.photoShadowRadiusDp == 0) {
+                                                    36
+                                                } else {
+                                                    draft.layout.photoShadowRadiusDp
+                                                }
+                                            )
+                                        )
+                                    )
+                                }
+                            )
+                            if (draft.layout.photoShadowEnabled) {
+                                IntField(
+                                    label = stringResource(R.string.frame_editor_photo_shadow_radius),
+                                    value = draft.layout.photoShadowRadiusDp,
+                                    onValueChange = {
+                                        onDraftChange(draft.copy(layout = draft.layout.copy(photoShadowRadiusDp = it.coerceAtLeast(0))))
+                                    }
+                                )
+                                IntField(
+                                    label = stringResource(R.string.frame_editor_photo_shadow_offset_x),
+                                    value = draft.layout.photoShadowOffsetXDp,
+                                    allowNegative = true,
+                                    onValueChange = {
+                                        onDraftChange(draft.copy(layout = draft.layout.copy(photoShadowOffsetXDp = it)))
+                                    }
+                                )
+                                IntField(
+                                    label = stringResource(R.string.frame_editor_photo_shadow_offset_y),
+                                    value = draft.layout.photoShadowOffsetYDp,
+                                    allowNegative = true,
+                                    onValueChange = {
+                                        onDraftChange(draft.copy(layout = draft.layout.copy(photoShadowOffsetYDp = it)))
+                                    }
+                                )
+                                ColorField(
+                                    label = stringResource(R.string.frame_editor_photo_shadow_color),
+                                    value = draft.layout.photoShadowColor,
+                                    onValueChange = {
+                                        onDraftChange(draft.copy(layout = draft.layout.copy(photoShadowColor = it)))
+                                    }
+                                )
+                            }
+                        }
                     }
                 } else {
                     Text(

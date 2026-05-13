@@ -505,6 +505,11 @@
     <string name="frame_editor_color_opacity">透明度</string>
     <string name="frame_editor_layout_line_spacing">行间距 (dp)</string>
     <string name="frame_editor_layout_border_width">边框宽度 (dp)</string>
+    <string name="frame_editor_photo_shadow">照片阴影</string>
+    <string name="frame_editor_photo_shadow_radius">阴影模糊 (dp)</string>
+    <string name="frame_editor_photo_shadow_offset_x">阴影 X 偏移 (dp)</string>
+    <string name="frame_editor_photo_shadow_offset_y">阴影 Y 偏移 (dp)</string>
+    <string name="frame_editor_photo_shadow_color">阴影颜色</string>
     <string name="frame_editor_image_hint">图片边框使用带透明区域的 PNG 或 WebP。选中的素材会被复制到应用私有目录。</string>
     <string name="frame_editor_pick_image">选择边框图片</string>
     <string name="frame_editor_image_source_path">当前图片：%s</string>

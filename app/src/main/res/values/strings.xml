@@ -515,6 +515,11 @@
     <string name="frame_editor_color_opacity">Opacity</string>
     <string name="frame_editor_layout_line_spacing">Line Spacing (dp)</string>
     <string name="frame_editor_layout_border_width">Border Width (dp)</string>
+    <string name="frame_editor_photo_shadow">Photo Shadow</string>
+    <string name="frame_editor_photo_shadow_radius">Shadow Blur (dp)</string>
+    <string name="frame_editor_photo_shadow_offset_x">Shadow X Offset (dp)</string>
+    <string name="frame_editor_photo_shadow_offset_y">Shadow Y Offset (dp)</string>
+    <string name="frame_editor_photo_shadow_color">Shadow Color</string>
     <string name="frame_editor_image_hint">Image frames use a transparent PNG or WebP. The selected asset will be copied into app storage.</string>
     <string name="frame_editor_pick_image">Choose Frame Image</string>
     <string name="frame_editor_image_source_path">Image source: %s</string>

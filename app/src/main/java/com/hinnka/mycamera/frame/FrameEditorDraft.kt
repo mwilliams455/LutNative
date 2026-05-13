@@ -1,6 +1,7 @@
 package com.hinnka.mycamera.frame
 
 import android.graphics.Color
+import androidx.compose.runtime.snapshots.toInt
 import java.util.UUID
 
 /**
@@ -160,6 +161,11 @@ data class FrameLayoutDraft(
     val lineSpacingDp: Int = 8,
     val paddingDp: Int = 16,
     val borderWidthDp: Int = 0,
+    val photoShadowEnabled: Boolean = false,
+    val photoShadowRadiusDp: Int = 0,
+    val photoShadowOffsetXDp: Int = 0,
+    val photoShadowOffsetYDp: Int = 2,
+    val photoShadowColor: Int = 0xCC000000.toInt(),
     val imageResName: String? = null,
     val imagePath: String? = null
 ) {
@@ -171,6 +177,11 @@ data class FrameLayoutDraft(
         lineSpacingDp = lineSpacingDp,
         paddingDp = paddingDp.coerceAtLeast(0),
         borderWidthDp = borderWidthDp.coerceAtLeast(0),
+        photoShadowEnabled = photoShadowEnabled,
+        photoShadowRadiusDp = photoShadowRadiusDp.coerceAtLeast(0),
+        photoShadowOffsetXDp = photoShadowOffsetXDp,
+        photoShadowOffsetYDp = photoShadowOffsetYDp,
+        photoShadowColor = photoShadowColor,
         imageResName = imageResName,
         imagePath = imagePath
     )
@@ -184,6 +195,11 @@ data class FrameLayoutDraft(
             lineSpacingDp = layout.lineSpacingDp,
             paddingDp = layout.paddingDp,
             borderWidthDp = layout.borderWidthDp,
+            photoShadowEnabled = layout.photoShadowEnabled,
+            photoShadowRadiusDp = layout.photoShadowRadiusDp,
+            photoShadowOffsetXDp = layout.photoShadowOffsetXDp,
+            photoShadowOffsetYDp = layout.photoShadowOffsetYDp,
+            photoShadowColor = layout.photoShadowColor,
             imageResName = layout.imageResName,
             imagePath = layout.imagePath
         )

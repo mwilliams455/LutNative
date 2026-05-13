@@ -36,6 +36,7 @@ class FrameRenderer(
 
     private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val photoShadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     /**
      * 渲染带边框的照片
@@ -174,6 +175,16 @@ class FrameRenderer(
                 photoTop = borderWidth.toFloat()
             }
         }
+        drawPhotoShadowIfNeeded(
+            canvas = canvas,
+            layout = layout,
+            photoLeft = photoLeft,
+            photoTop = photoTop,
+            photoWidth = originalBitmap.width.toFloat(),
+            photoHeight = originalBitmap.height.toFloat(),
+            borderWidth = borderWidth,
+            scale = scale
+        )
         canvas.drawBitmap(originalBitmap, photoLeft, photoTop, null)
 
         // 绘制边框内容
@@ -264,6 +275,42 @@ class FrameRenderer(
         }
 
         return output
+    }
+
+    private fun drawPhotoShadowIfNeeded(
+        canvas: Canvas,
+        layout: FrameLayout,
+        photoLeft: Float,
+        photoTop: Float,
+        photoWidth: Float,
+        photoHeight: Float,
+        borderWidth: Int,
+        scale: Float
+    ) {
+        val supportsBorderShadow = borderWidth > 0 &&
+            (layout.position == FramePosition.BORDER || layout.position == FramePosition.BOTH)
+        if (!supportsBorderShadow || !layout.photoShadowEnabled) return
+
+        val shadowAlpha = (layout.photoShadowColor ushr 24) and 0xFF
+        if (shadowAlpha == 0) return
+
+        val radius = dpToPx(layout.photoShadowRadiusDp.coerceAtLeast(0)).toFloat() * scale
+        val offsetX = dpToPx(layout.photoShadowOffsetXDp) * scale
+        val offsetY = dpToPx(layout.photoShadowOffsetYDp) * scale
+
+        photoShadowPaint.reset()
+        photoShadowPaint.isAntiAlias = true
+        photoShadowPaint.color = Color.WHITE
+        photoShadowPaint.setShadowLayer(radius, offsetX, offsetY, layout.photoShadowColor)
+
+        canvas.drawRect(
+            photoLeft,
+            photoTop,
+            photoLeft + photoWidth,
+            photoTop + photoHeight,
+            photoShadowPaint
+        )
+        photoShadowPaint.clearShadowLayer()
     }
 
     private fun drawFrameContent(

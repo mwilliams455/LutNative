@@ -70,6 +70,11 @@ data class FrameLayout(
     val lineSpacingDp: Int = 8, // 行间距
     val paddingDp: Int = 16,
     val borderWidthDp: Int = 0,  // 四周边框宽度（仅 BORDER 模式使用）
+    val photoShadowEnabled: Boolean = false,
+    val photoShadowRadiusDp: Int = 0,
+    val photoShadowOffsetXDp: Int = 0,
+    val photoShadowOffsetYDp: Int = 2,
+    val photoShadowColor: Int = 0xCC000000.toInt(),
     val imageResName: String? = null,  // 边框图片资源名称（仅 IMAGE 模式使用，内置资源）
     val imagePath: String? = null  // 边框图片文件路径（仅 IMAGE 模式使用，外部导入）
 )

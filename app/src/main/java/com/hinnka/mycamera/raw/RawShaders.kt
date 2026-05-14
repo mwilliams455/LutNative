@@ -145,6 +145,10 @@ object RawShaders {
         uniform ivec3 uDcpLookTableDivisions;
         uniform int uDcpHueSatEncoding;
         uniform int uDcpLookTableEncoding;
+        
+        float luminance(vec3 color) {
+            return max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
+        }
 
         float sampleCurve(float value) {
             if (!uCurveEnabled || uCurveSize <= 1.0) {
@@ -156,11 +160,9 @@ object RawShaders {
         }
 
         vec3 applyCurve(vec3 color) {
-            return vec3(
-                sampleCurve(color.r),
-                sampleCurve(color.g),
-                sampleCurve(color.b)
-            );
+            float luma = luminance(color);
+            float scale = sampleCurve(luma) / max(luma, 0.00001);
+            return clamp(color * scale, 0.0, 1.0);
         }
 
         vec3 linearToSrgb(vec3 color) {
@@ -173,10 +175,6 @@ object RawShaders {
                 useHigh.g ? high.g : low.g,
                 useHigh.b ? high.b : low.b
             );
-        }
-        
-        float luminance(vec3 color) {
-            return max(dot(color, vec3(0.2126, 0.7152, 0.0722)), 1e-4);
         }
 
         float encodeValue(float value, int encoding) {

@@ -2254,16 +2254,17 @@ class RawDemosaicProcessor {
         rawBlackPointCorrection: Float,
         rawWhitePointCorrection: Float
     ): Pair<FloatArray, FloatArray> {
+        val fixedRawBlackPoint = (rawBlackPointCorrection + 0.004f).coerceAtMost(1f)
         if (metadata.cfaPattern == RawMetadata.CFA_LINEAR_RGB) {
             val encodedMax = 65535f
-            val blackLevel = FloatArray(3) { (encodedMax * rawBlackPointCorrection).coerceAtLeast(0f) }
+            val blackLevel = FloatArray(3) { (encodedMax * fixedRawBlackPoint).coerceAtLeast(0f) }
             val whiteBase = encodedMax * (1f + rawWhitePointCorrection)
             val whiteLevel = FloatArray(3) { channel -> maxOf(whiteBase, blackLevel[channel] + 1f) }
             return blackLevel to whiteLevel
         }
 
         val sensorRange = metadata.whiteLevel - metadata.blackLevel.average().toFloat()
-        val blackPointOffset = sensorRange * rawBlackPointCorrection
+        val blackPointOffset = sensorRange * fixedRawBlackPoint
         val whitePointOffset = sensorRange * rawWhitePointCorrection
         val blackLevel = FloatArray(3) { channel ->
             val sourceIndex = channelToCfaChannelIndex(channel)

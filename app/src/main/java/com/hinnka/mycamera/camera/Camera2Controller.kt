@@ -92,6 +92,7 @@ class Camera2Controller(private val context: Context) {
         private const val SCENE_CHANGE_FOCUS_DISTANCE_DELTA = 0.2f // 焦距跳变阈值（diopters），对焦锁定后逐帧跟踪
         private const val FOCUS_LOCK_SETTLE_FRAMES = 5        // 对焦锁定后等待镜头稳定的帧数
         private const val SCENE_CHANGE_CONFIRM_FRAMES = 3     // 连续 N 帧检测到变化才确认
+        private const val AI_SUBJECT_RECENT_MS = 1800L
     }
 
     private val cameraManager: CameraManager by lazy {
@@ -116,6 +117,7 @@ class Camera2Controller(private val context: Context) {
     private var imageReader: ImageReader? = null
 
     val previewDepthProcessor = com.hinnka.mycamera.preview.PreviewDepthProcessor(context)
+    val previewAiFocusProcessor = com.hinnka.mycamera.preview.PreviewAiFocusProcessor(context)
 
 
     // 降噪等级 (0=Off, 1=Fast, 2=High Quality, 3=ZSL, 4=Minimal, 5=Auto)
@@ -210,6 +212,9 @@ class Camera2Controller(private val context: Context) {
     private var focusLockedReferenceDistance: Float = 0f
     private var focusLockSettleFrames = 0       // 对焦锁定后等待镜头稳定的帧数
     private var sceneChangeFrameCount = 0
+    private var aiSubjectLastSeenElapsedMs: Long = 0L
+    private var aiSubjectLastSeenX: Float = -1f
+    private var aiSubjectLastSeenY: Float = -1f
 
     // 高光优先测光：最亮区域坐标（归一化 0-1）及平滑状态
     @Volatile
@@ -334,13 +339,13 @@ class Camera2Controller(private val context: Context) {
             if (_state.value.isFocusing) {
                 when (afState) {
                     CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED -> {
-                        _state.value = _state.value.copy(focusSuccess = true)
+                        _state.value = _state.value.copy(isFocusing = false, focusSuccess = true)
                         // 只在首次锁定时记录一次，后续 AF 狩猎重新锁定不再覆盖
                         if (!isFocusLockedWaitingForSceneChange) recordFocusLockExposure(result)
                     }
 
                     CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED -> {
-                        _state.value = _state.value.copy(focusSuccess = false)
+                        _state.value = _state.value.copy(isFocusing = false, focusSuccess = false)
                         if (!isFocusLockedWaitingForSceneChange) recordFocusLockExposure(result)
                     }
                 }
@@ -383,9 +388,14 @@ class Camera2Controller(private val context: Context) {
                     }
 
                     if (sceneChanged) {
-                        sceneChangeFrameCount++
-                        if (sceneChangeFrameCount >= SCENE_CHANGE_CONFIRM_FRAMES) {
-                            restoreContinuousAf()
+                        if (isAiSubjectRecentlySeen()) {
+                            updateFocusLockSceneReference(result)
+                            sceneChangeFrameCount = 0
+                        } else {
+                            sceneChangeFrameCount++
+                            if (sceneChangeFrameCount >= SCENE_CHANGE_CONFIRM_FRAMES) {
+                                restoreContinuousAf()
+                            }
                         }
                     } else {
                         sceneChangeFrameCount = 0
@@ -2702,14 +2712,27 @@ class Camera2Controller(private val context: Context) {
 // ==================== 对焦控制 ====================
 
     private fun recordFocusLockExposure(result: CaptureResult) {
-        val iso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: return
-        val exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: return
-        focusLockedReferenceIso = iso
-        focusLockedReferenceExposureNs = exposure
-        focusLockedReferenceDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: 0f
+        updateFocusLockSceneReference(result)
         isFocusLockedWaitingForSceneChange = true
         focusLockSettleFrames = FOCUS_LOCK_SETTLE_FRAMES
         sceneChangeFrameCount = 0
+    }
+
+    private fun updateFocusLockSceneReference(result: CaptureResult) {
+        focusLockedReferenceIso = result.get(CaptureResult.SENSOR_SENSITIVITY) ?: return
+        focusLockedReferenceExposureNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: return
+        focusLockedReferenceDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: 0f
+    }
+
+    private fun isAiSubjectRecentlySeen(): Boolean {
+        if (aiSubjectLastSeenElapsedMs <= 0L) return false
+        return SystemClock.elapsedRealtime() - aiSubjectLastSeenElapsedMs <= AI_SUBJECT_RECENT_MS
+    }
+
+    fun notifyAiSubjectSeen(x: Float, y: Float) {
+        aiSubjectLastSeenElapsedMs = SystemClock.elapsedRealtime()
+        aiSubjectLastSeenX = x
+        aiSubjectLastSeenY = y
     }
 
     private fun restoreContinuousAf() {
@@ -2728,13 +2751,27 @@ class Camera2Controller(private val context: Context) {
             applyMeteringRegions()
             updatePreview()
         }
-        _state.value = _state.value.copy(isFocusing = false, focusSuccess = null)
+        _state.value = _state.value.copy(focusPoint = null, isFocusing = false, focusSuccess = null)
+    }
+
+    fun cancelSubjectFocus(reason: String) {
+        PLog.d(TAG, "Cancel subject focus: $reason")
+        restoreContinuousAf()
     }
 
     /**
      * 点击对焦
      */
     fun focusOnPoint(x: Float, y: Float, viewWidth: Int, viewHeight: Int) {
+        if (viewWidth <= 0 || viewHeight <= 0) return
+        focusOnNormalizedPoint(x / viewWidth, y / viewHeight, FocusPointSource.MANUAL)
+    }
+
+    fun focusOnNormalizedPoint(
+        normX: Float,
+        normY: Float,
+        source: FocusPointSource = FocusPointSource.AI,
+    ) {
         val cameraId = _state.value.currentCameraId
         if (cameraId.isEmpty()) return
 
@@ -2749,12 +2786,13 @@ class Camera2Controller(private val context: Context) {
             val lensFacing = getLensFacing()
 
             // 计算归一化坐标（0-1）
-            val normX = x / viewWidth
-            val normY = y / viewHeight
+            val normalizedX = normX.coerceIn(0f, 1f)
+            val normalizedY = normY.coerceIn(0f, 1f)
 
             // 存储UI坐标用于显示对焦框
             _state.value = _state.value.copy(
-                focusPoint = Pair(normX, normY),
+                focusPoint = Pair(normalizedX, normalizedY),
+                focusPointSource = source,
                 isFocusing = true,
                 focusSuccess = null
             )
@@ -2762,11 +2800,11 @@ class Camera2Controller(private val context: Context) {
             // 根据传感器方向转换坐标
             // 传感器坐标系与UI坐标系可能不同，需要旋转
             val (sensorX, sensorY) = when (sensorOrientation) {
-                0 -> Pair(normX, normY)
-                90 -> Pair(normY, 1 - normX)  // 顺时针90度
-                180 -> Pair(1 - normX, 1 - normY)  // 180度
-                270 -> Pair(1 - normY, normX)  // 顺时针270度
-                else -> Pair(normX, normY)
+                0 -> Pair(normalizedX, normalizedY)
+                90 -> Pair(normalizedY, 1 - normalizedX)  // 顺时针90度
+                180 -> Pair(1 - normalizedX, 1 - normalizedY)  // 180度
+                270 -> Pair(1 - normalizedY, normalizedX)  // 顺时针270度
+                else -> Pair(normalizedX, normalizedY)
             }
 
             // 如果是前置摄像头，需要水平翻转
@@ -2811,7 +2849,7 @@ class Camera2Controller(private val context: Context) {
                 MeteringRectangle(aeRect, MeteringRectangle.METERING_WEIGHT_MAX)
             }
 
-            PLog.d(TAG, "Focus: UI($normX, $normY) -> Sensor($finalX, $finalY), mode=${_state.value.meteringMode}")
+            PLog.d(TAG, "Focus: UI($normalizedX, $normalizedY) -> Sensor($finalX, $finalY), mode=${_state.value.meteringMode}")
 
             previewRequestBuilder?.apply {
                 if (maxAfRegions > 0) {
@@ -3628,6 +3666,8 @@ class Camera2Controller(private val context: Context) {
      */
     fun release() {
         closeCamera()
+        previewDepthProcessor.release()
+        previewAiFocusProcessor.release()
         videoRecorder.release()
         stopBackgroundThread()
         cameraDiscovery.clearCache()

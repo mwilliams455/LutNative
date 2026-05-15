@@ -734,6 +734,7 @@ fun CameraScreen(
                         baselineColorRecipeParams = currentBaselineRecipeParams,
                         colorRecipeParams = previewRecipeParamsOverride ?: currentRecipeParams,
                         focusPoint = state.focusPoint,
+                        focusPointSource = state.focusPointSource,
                         isFocusing = state.isFocusing,
                         focusSuccess = state.focusSuccess,
                         meteringMode = state.meteringMode,
@@ -758,6 +759,7 @@ fun CameraScreen(
                         onMeteringUpdated = { w, l -> viewModel.handleMeteringUpdate(w, l) },
                         onHighlightPointUpdated = { hx, hy -> viewModel.handleHighlightPointUpdate(hx, hy) },
                         onDepthInputAvailable = { viewModel.handleDepthMapUpdate(it) },
+                        onAiFocusInputAvailable = { viewModel.handleAiFocusInputUpdate(it) },
                         onGLSurfaceViewReady = {
                             viewModel.glSurfaceView = it
                         },

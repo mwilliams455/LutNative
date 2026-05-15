@@ -19,6 +19,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hinnka.mycamera.camera.*
 import com.hinnka.mycamera.data.ContentRepository
+import com.hinnka.mycamera.data.AiFocusTargetMode
 import com.hinnka.mycamera.data.UserPreferences
 import com.hinnka.mycamera.data.VolumeKeyAction
 import com.hinnka.mycamera.frame.FrameEditorDraft
@@ -203,6 +204,12 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     // 新增设置项 StateFlow
     val showLevelIndicator: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.showLevelIndicator }
     val focusPeakingEnabled: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.focusPeakingEnabled }
+    val aiFocusTargetMode: StateFlow<AiFocusTargetMode> =
+        userPreferencesRepository.userPreferences.map { it.aiFocusTargetMode }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, AiFocusTargetMode.PERSON)
+    val aiFocusScoreThreshold: StateFlow<Float> =
+        userPreferencesRepository.userPreferences.map { it.aiFocusScoreThreshold }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, 0.5f)
     val shutterSoundEnabled: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.shutterSoundEnabled }
     val vibrationEnabled: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.vibrationEnabled }
     val volumeKeyAction: StateFlow<VolumeKeyAction> =
@@ -836,6 +843,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     fun prewarmDepthEstimator() {
         cameraController.previewDepthProcessor.prewarm()
+        cameraController.previewAiFocusProcessor.prewarm()
         viewModelScope.launch {
             RawDemosaicProcessor.getInstance().prewarmDepthEstimator(getApplication<Application>())
         }
@@ -2007,6 +2015,33 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         cameraController.previewDepthProcessor.processBitmap(bitmap)
     }
 
+    fun handleAiFocusInputUpdate(bitmap: android.graphics.Bitmap) {
+        if (!state.value.isAutoFocus || state.value.isFocusing) return
+        cameraController.previewAiFocusProcessor.targetMode = aiFocusTargetMode.value
+        cameraController.previewAiFocusProcessor.scoreThreshold = aiFocusScoreThreshold.value
+        cameraController.previewAiFocusProcessor.onFocusTarget = { target ->
+            viewModelScope.launch(Dispatchers.Main) {
+                val currentState = state.value
+                if (currentState.focusPoint != null &&
+                    currentState.focusPointSource == com.hinnka.mycamera.camera.FocusPointSource.MANUAL
+                ) {
+                    return@launch
+                }
+                if (!state.value.isAutoFocus || state.value.isFocusing) return@launch
+                cameraController.focusOnNormalizedPoint(target.x, target.y)
+            }
+        }
+        cameraController.previewAiFocusProcessor.onTargetSeen = { target ->
+            cameraController.notifyAiSubjectSeen(target.x, target.y)
+        }
+        cameraController.previewAiFocusProcessor.onTargetLost = {
+            viewModelScope.launch(Dispatchers.Main) {
+                cameraController.cancelSubjectFocus("ai_target_lost")
+            }
+        }
+        cameraController.previewAiFocusProcessor.processBitmap(bitmap)
+    }
+
     // ==================== 边框相关方法 ====================
 
     /**
@@ -2223,6 +2258,18 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun setFocusPeakingEnabled(enabled: Boolean) {
         viewModelScope.launch {
             userPreferencesRepository.saveFocusPeakingEnabled(enabled)
+        }
+    }
+
+    fun setAiFocusTargetMode(mode: AiFocusTargetMode) {
+        viewModelScope.launch {
+            userPreferencesRepository.saveAiFocusTargetMode(mode)
+        }
+    }
+
+    fun setAiFocusScoreThreshold(value: Float) {
+        viewModelScope.launch {
+            userPreferencesRepository.saveAiFocusScoreThreshold(value)
         }
     }
 

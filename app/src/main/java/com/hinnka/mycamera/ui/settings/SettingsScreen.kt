@@ -99,6 +99,7 @@ import com.hinnka.mycamera.BuildConfig
 import com.hinnka.mycamera.R
 import com.hinnka.mycamera.camera.AspectRatio
 import com.hinnka.mycamera.camera.MultiFrameConfig
+import com.hinnka.mycamera.data.AiFocusTargetMode
 import com.hinnka.mycamera.data.VolumeKeyAction
 import com.hinnka.mycamera.frame.FrameInfo
 import com.hinnka.mycamera.lut.BaselineColorCorrectionTarget
@@ -133,6 +134,19 @@ private fun openExternalUrl(context: Context, url: String) {
     runCatching { context.startActivity(intent) }
 }
 
+@Composable
+private fun AiFocusTargetMode.displayName(): String {
+    return when (this) {
+        AiFocusTargetMode.OFF -> stringResource(R.string.settings_ai_focus_target_off)
+        AiFocusTargetMode.AUTO -> stringResource(R.string.settings_ai_focus_target_auto)
+        AiFocusTargetMode.PERSON -> stringResource(R.string.settings_ai_focus_target_person)
+        AiFocusTargetMode.ANIMAL -> stringResource(R.string.settings_ai_focus_target_animal)
+        AiFocusTargetMode.BIRD -> stringResource(R.string.settings_ai_focus_target_bird)
+        AiFocusTargetMode.VEHICLE -> stringResource(R.string.settings_ai_focus_target_vehicle)
+        AiFocusTargetMode.AIRPLANE -> stringResource(R.string.settings_ai_focus_target_airplane)
+    }
+}
+
 /**
  * 设置页面
  */
@@ -149,6 +163,8 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsState()
     val showLevelIndicator by viewModel.showLevelIndicator.collectAsState(initial = false)
     val focusPeakingEnabled by viewModel.focusPeakingEnabled.collectAsState(initial = true)
+    val aiFocusTargetMode by viewModel.aiFocusTargetMode.collectAsState()
+    val aiFocusScoreThreshold by viewModel.aiFocusScoreThreshold.collectAsState()
     val showGrid = state.showGrid
     val shutterSoundEnabled by viewModel.shutterSoundEnabled.collectAsState(initial = true)
     val vibrationEnabled by viewModel.vibrationEnabled.collectAsState(initial = true)
@@ -218,6 +234,7 @@ fun SettingsScreen(
     var rawExposureCompensationUi by remember { mutableStateOf(rawExposureCompensation) }
     var rawBlackPointCorrectionUi by remember { mutableStateOf(rawBlackPointCorrection) }
     var rawWhitePointCorrectionUi by remember { mutableStateOf(rawWhitePointCorrection) }
+    var aiFocusScoreThresholdUi by remember(aiFocusScoreThreshold) { mutableStateOf(aiFocusScoreThreshold) }
     var showAspectRatioDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(rawNlmNoiseFactor, rawExposureCompensation, rawBlackPointCorrection, rawWhitePointCorrection) {
@@ -717,6 +734,40 @@ fun SettingsScreen(
                             description = stringResource(R.string.settings_focus_peaking_description),
                             checked = focusPeakingEnabled,
                             onCheckedChange = { viewModel.setFocusPeakingEnabled(it) }
+                        )
+
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.1f),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+
+                        val aiFocusModeOptions = AiFocusTargetMode.entries.map { it to it.displayName() }
+                        val aiFocusModeLabels = aiFocusModeOptions.map { it.second }
+                        DropdownSettingItem(
+                            title = stringResource(R.string.settings_ai_focus_target),
+                            description = stringResource(R.string.settings_ai_focus_target_description),
+                            value = aiFocusTargetMode.displayName(),
+                            options = aiFocusModeLabels,
+                            isLoading = false,
+                            onExpanded = {},
+                            onOptionSelected = { label ->
+                                aiFocusModeOptions.firstOrNull { it.second == label }?.first?.let {
+                                    viewModel.setAiFocusTargetMode(it)
+                                }
+                            }
+                        )
+
+                        SliderSettingItem(
+                            title = stringResource(R.string.settings_ai_focus_sensitivity),
+                            description = stringResource(R.string.settings_ai_focus_sensitivity_description),
+                            value = aiFocusScoreThresholdUi,
+                            valueRange = 0.05f..0.95f,
+                            onValueChange = {
+                                aiFocusScoreThresholdUi = it
+                                viewModel.setAiFocusScoreThreshold(it)
+                            },
+                            valueTextFormatter = { String.format("%.2f", it) },
+                            resetValue = 0.5f
                         )
 
                         HorizontalDivider(

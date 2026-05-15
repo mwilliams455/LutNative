@@ -18,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.hinnka.mycamera.livephoto.LivePhotoRecorder
+import com.hinnka.mycamera.camera.FocusPointSource
 import com.hinnka.mycamera.camera.MeteringMode
 import com.hinnka.mycamera.lut.LutConfig
 import com.hinnka.mycamera.model.ColorRecipeParams
@@ -43,6 +44,7 @@ fun CameraPreviewGL(
     baselineColorRecipeParams: ColorRecipeParams,
     colorRecipeParams: ColorRecipeParams,
     focusPoint: Pair<Float, Float>?,
+    focusPointSource: FocusPointSource = FocusPointSource.MANUAL,
     isFocusing: Boolean,
     focusSuccess: Boolean?,
     meteringMode: MeteringMode = MeteringMode.CENTER_WEIGHTED,
@@ -53,6 +55,7 @@ fun CameraPreviewGL(
     onMeteringUpdated: ((Double, Double) -> Unit)? = null,
     onHighlightPointUpdated: ((Float, Float) -> Unit)? = null,
     onDepthInputAvailable: ((android.graphics.Bitmap) -> Unit)? = null,
+    onAiFocusInputAvailable: ((android.graphics.Bitmap) -> Unit)? = null,
     livePhotoRecorder: LivePhotoRecorder? = null,
     videoRecorder: VideoRecorder? = null,
     videoLogProfile: VideoLogProfile = VideoLogProfile.OFF,
@@ -167,6 +170,7 @@ fun CameraPreviewGL(
                         glSurfaceView.onMeteringUpdated = { w, l -> onMeteringUpdated?.invoke(w, l) }
                         glSurfaceView.onHighlightPointUpdated = { hx, hy -> onHighlightPointUpdated?.invoke(hx, hy) }
                         glSurfaceView.onDepthInputAvailable = { onDepthInputAvailable?.invoke(it) }
+                        glSurfaceView.onAiFocusInputAvailable = { onAiFocusInputAvailable?.invoke(it) }
 
                         viewWidth = glSurfaceView.width
                         viewHeight = glSurfaceView.height
@@ -206,8 +210,8 @@ fun CameraPreviewGL(
 
                         glSurfaceView.setFocusPoint(focusPoint?.let {
                             android.graphics.PointF(
-                                it.first / viewWidth,
-                                it.second / viewHeight
+                                it.first,
+                                it.second
                             )
                         })
                         glSurfaceView.setMeteringMode(meteringMode)
@@ -225,6 +229,7 @@ fun CameraPreviewGL(
             // 对焦指示器
             FocusIndicator(
                 position = focusPoint,
+                source = focusPointSource,
                 isFocusing = isFocusing,
                 focusSuccess = focusSuccess,
                 modifier = Modifier.fillMaxSize()

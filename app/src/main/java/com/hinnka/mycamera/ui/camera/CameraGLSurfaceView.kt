@@ -39,6 +39,7 @@ class CameraGLSurfaceView @JvmOverloads constructor(
     var onMeteringUpdated: ((Double, Double) -> Unit)? = null
     var onHighlightPointUpdated: ((Float, Float) -> Unit)? = null
     var onDepthInputAvailable: ((Bitmap) -> Unit)? = null
+    var onAiFocusInputAvailable: ((Bitmap) -> Unit)? = null
 
     var onSurfaceReady: ((Surface) -> Unit)? = null
     var onSurfaceDestroyed: (() -> Unit)? = null
@@ -85,6 +86,9 @@ class CameraGLSurfaceView @JvmOverloads constructor(
 
         renderer.onDepthInputAvailable = { bitmap ->
             onDepthInputAvailable?.invoke(bitmap)
+        }
+        renderer.onAiFocusInputAvailable = { bitmap ->
+            onAiFocusInputAvailable?.invoke(bitmap)
         }
 
         // 保持 EGL 上下文

@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.hinnka.mycamera.camera.FocusPointSource
 import kotlinx.coroutines.delay
 
 /**
@@ -17,6 +18,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun FocusIndicator(
     position: Pair<Float, Float>?,
+    source: FocusPointSource = FocusPointSource.MANUAL,
     isFocusing: Boolean,
     focusSuccess: Boolean?,
     modifier: Modifier = Modifier
@@ -46,13 +48,14 @@ fun FocusIndicator(
     val color = when (focusSuccess) {
         true -> Color.Green
         false -> Color.Red
-        else -> Color.White
+        else -> if (source == FocusPointSource.AI) Color(0xFF64D8FF) else Color.White
     }
 
-    LaunchedEffect(position, isFocusing) {
-        visible = position != null
-        if (!isFocusing) {
-            delay(500)
+    LaunchedEffect(position) {
+        if (position != null) {
+            visible = true
+        } else {
+            delay(200)
             visible = false
         }
     }
@@ -65,10 +68,11 @@ fun FocusIndicator(
         ) {
             val x = position.first * size.width
             val y = position.second * size.height
-            val boxSize = 60.dp.toPx() * scale
+            val isAiFocus = source == FocusPointSource.AI
+            val boxSize = (if (isAiFocus) 38.dp else 60.dp).toPx() * scale
             val halfSize = boxSize / 2
-            val cornerLength = 15.dp.toPx()
-            val strokeWidth = 2.dp.toPx()
+            val cornerLength = (if (isAiFocus) 9.dp else 15.dp).toPx()
+            val strokeWidth = (if (isAiFocus) 1.5.dp else 2.dp).toPx()
 
             val drawColor = color.copy(alpha = alpha)
 
@@ -127,6 +131,22 @@ fun FocusIndicator(
                 end = Offset(x + halfSize, y + halfSize - cornerLength),
                 strokeWidth = strokeWidth
             )
+
+            if (isAiFocus) {
+                val centerTick = 3.dp.toPx()
+                drawLine(
+                    color = drawColor,
+                    start = Offset(x - centerTick, y),
+                    end = Offset(x + centerTick, y),
+                    strokeWidth = strokeWidth
+                )
+                drawLine(
+                    color = drawColor,
+                    start = Offset(x, y - centerTick),
+                    end = Offset(x, y + centerTick),
+                    strokeWidth = strokeWidth
+                )
+            }
         }
     }
 }

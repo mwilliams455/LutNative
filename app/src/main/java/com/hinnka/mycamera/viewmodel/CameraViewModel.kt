@@ -19,6 +19,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hinnka.mycamera.camera.*
 import com.hinnka.mycamera.data.ContentRepository
+import com.hinnka.mycamera.data.UserPreferences
 import com.hinnka.mycamera.data.VolumeKeyAction
 import com.hinnka.mycamera.frame.FrameEditorDraft
 import com.hinnka.mycamera.frame.FrameInfo
@@ -29,6 +30,7 @@ import com.hinnka.mycamera.lut.BaselineColorCorrectionTarget
 import com.hinnka.mycamera.lut.LutConfig
 import com.hinnka.mycamera.lut.LutConverter
 import com.hinnka.mycamera.lut.LutInfo
+import com.hinnka.mycamera.lut.getBaselineColorCorrectionConfig
 import com.hinnka.mycamera.lut.creator.LutGenerator
 import com.hinnka.mycamera.lut.creator.OpenAIApiClient
 import com.hinnka.mycamera.model.ColorRecipeParams
@@ -77,6 +79,14 @@ data class MultipleExposureSessionState(
 
     val canFinish: Boolean
         get() = capturedCount >= 2 && !isProcessing
+}
+
+private fun resolvePreviewBaselineTarget(useRaw: Boolean): BaselineColorCorrectionTarget? {
+    return if (useRaw) null else BaselineColorCorrectionTarget.JPG
+}
+
+private fun UserPreferences.getBaselineLutId(target: BaselineColorCorrectionTarget): String? {
+    return getBaselineColorCorrectionConfig(target).lutId
 }
 
 /**
@@ -146,17 +156,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     @OptIn(ExperimentalCoroutinesApi::class)
     val currentBaselineRecipeParams: StateFlow<ColorRecipeParams> =
         userPreferencesRepository.userPreferences.flatMapLatest { prefs ->
-            val target = if (prefs.useRaw) {
-                BaselineColorCorrectionTarget.RAW
-            } else {
-                BaselineColorCorrectionTarget.JPG
-            }
-            val lutId = when (target) {
-                BaselineColorCorrectionTarget.JPG -> prefs.jpgBaselineLutId
-                BaselineColorCorrectionTarget.RAW -> prefs.rawBaselineLutId
-                BaselineColorCorrectionTarget.PHANTOM -> prefs.phantomBaselineLutId
-            }
-            if (lutId == null) {
+            val target = resolvePreviewBaselineTarget(prefs.useRaw)
+            val lutId = target?.let { prefs.getBaselineLutId(it) }
+            if (target == null || lutId == null) {
                 flowOf(ColorRecipeParams.DEFAULT)
             } else {
                 contentRepository.lutManager.getColorRecipeParams(lutId, target)
@@ -599,16 +601,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             userPreferencesRepository.userPreferences.collectLatest { prefs ->
-                val target = if (prefs.useRaw) {
-                    BaselineColorCorrectionTarget.RAW
-                } else {
-                    BaselineColorCorrectionTarget.JPG
-                }
-                val baselineLutId = when (target) {
-                    BaselineColorCorrectionTarget.JPG -> prefs.jpgBaselineLutId
-                    BaselineColorCorrectionTarget.RAW -> prefs.rawBaselineLutId
-                    BaselineColorCorrectionTarget.PHANTOM -> prefs.phantomBaselineLutId
-                }
+                val baselineLutId = resolvePreviewBaselineTarget(prefs.useRaw)
+                    ?.let { prefs.getBaselineLutId(it) }
                 currentBaselineLutConfig = withContext(Dispatchers.IO) {
                     baselineLutId?.let { contentRepository.lutManager.loadLut(it) }
                 }

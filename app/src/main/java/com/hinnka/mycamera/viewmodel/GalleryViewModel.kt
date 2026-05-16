@@ -24,6 +24,7 @@ import com.hinnka.mycamera.gallery.MediaMetadata
 import com.hinnka.mycamera.hdr.HdrGainmapStrength
 import com.hinnka.mycamera.hdr.UnifiedGainmapProducer
 import com.hinnka.mycamera.lut.creator.AiPhotoEvaluation
+import com.hinnka.mycamera.lut.BaselineColorCorrectionTarget
 import com.hinnka.mycamera.lut.LutConfig
 import com.hinnka.mycamera.lut.LutInfo
 import com.hinnka.mycamera.lut.PhotoTransformation
@@ -301,6 +302,22 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         private set
     var editRawBaselineLutId = MutableStateFlow<String?>(null)
         private set
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    var editRawBaselineRecipeParams = editRawBaselineLutId.flatMapLatest { id ->
+        if (id == null) {
+            flowOf(ColorRecipeParams.DEFAULT)
+        } else {
+            contentRepository.lutManager.getColorRecipeParams(
+                id,
+                BaselineColorCorrectionTarget.RAW
+            )
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = ColorRecipeParams.DEFAULT
+    )
 
     // Computational Bokeh editing state
     var editComputationalAperture = MutableStateFlow<Float?>(null)
@@ -1719,6 +1736,15 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
         editChromaNoiseReduction.value = value
     }
 
+    private suspend fun loadRawBaselineRecipeParams(lutId: String?): ColorRecipeParams? {
+        return lutId?.let {
+            contentRepository.lutManager.loadColorRecipeParams(
+                it,
+                BaselineColorCorrectionTarget.RAW
+            )
+        }
+    }
+
     private fun persistRawEditMetadata(mediaData: MediaData) {
         val denoise = editRawDenoise.value
         val exposure = editRawExposureCompensation.value
@@ -1731,6 +1757,7 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
 
         viewModelScope.launch {
             val context = getApplication<Application>()
+            val baselineRecipeParams = loadRawBaselineRecipeParams(baselineLutId)
             PLog.d(
                 TAG,
                 "persist RAW edit metadata: ${mediaData.id}, dro=$droMode, denoise=$denoise"
@@ -1744,7 +1771,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     rawWhitePointCorrection = whitePoint,
                     droMode = droMode,
                     rawDcpId = dcpId,
-                    baselineLutId = baselineLutId
+                    baselineTarget = baselineLutId?.let { BaselineColorCorrectionTarget.RAW },
+                    baselineLutId = baselineLutId,
+                    baselineColorRecipeParams = baselineRecipeParams
                 )
             }.let { updated ->
                 if (updated != null) {
@@ -2032,7 +2061,11 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         rawBlackPointCorrection = editRawBlackPointCorrection.value,
                         rawWhitePointCorrection = editRawWhitePointCorrection.value,
                         rawDcpId = editRawDcpId.value,
+                        baselineTarget = editRawBaselineLutId.value?.let { BaselineColorCorrectionTarget.RAW },
                         baselineLutId = editRawBaselineLutId.value,
+                        baselineColorRecipeParams = editRawBaselineLutId.value?.let {
+                            editRawBaselineRecipeParams.value
+                        },
                         computationalAperture = editComputationalAperture.value,
                         focusPointX = editFocusPointX.value,
                         focusPointY = editFocusPointY.value,
@@ -2293,6 +2326,8 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
 
+                val rawBaselineLutId = editRawBaselineLutId.value
+                val rawBaselineRecipeParams = loadRawBaselineRecipeParams(rawBaselineLutId)
                 val w = photo.metadata?.width ?: photo.width
                 val h = photo.metadata?.height ?: photo.height
                 val finalCropRegion = editCropRect.value?.let { rectF ->
@@ -2318,7 +2353,9 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
                         rawBlackPointCorrection = editRawBlackPointCorrection.value,
                         rawWhitePointCorrection = editRawWhitePointCorrection.value,
                         rawDcpId = editRawDcpId.value,
-                        baselineLutId = editRawBaselineLutId.value,
+                        baselineTarget = rawBaselineLutId?.let { BaselineColorCorrectionTarget.RAW },
+                        baselineLutId = rawBaselineLutId,
+                        baselineColorRecipeParams = rawBaselineRecipeParams,
                         computationalAperture = editComputationalAperture.value,
                         focusPointX = editFocusPointX.value,
                         focusPointY = editFocusPointY.value,

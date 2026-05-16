@@ -4,16 +4,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -23,7 +20,6 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -118,7 +114,8 @@ private fun CurveCanvas(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    val hitThresholdPx = with(density) { 20.dp.toPx() }
+    val hitThresholdPx = with(density) { 24.dp.toPx() }
+    val graphInsetPx = with(density) { 18.dp.toPx() }
 
     // 内部拖动状态；pointerInput key 使用 state 对象引用（稳定）
     val controlPointsState = remember { mutableStateOf(parsePoints(points)) }
@@ -145,14 +142,15 @@ private fun CurveCanvas(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 // key 使用 state 对象引用（稳定），避免拖动时 coroutine 被重启
-                .pointerInput(controlPointsState, hitThresholdPx) {
+                .pointerInput(controlPointsState, hitThresholdPx, graphInsetPx) {
                     awaitPointerEventScope {
                         while (true) {
                             val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
 
                             val downPos = down.position
                             val nearIdx = findNearestIndex(
-                                controlPointsState.value, downPos, size, hitThresholdPx
+                                controlPointsState.value, downPos, size, graphInsetPx, hitThresholdPx
                             )
 
                             if (nearIdx >= 0) {
@@ -186,8 +184,8 @@ private fun CurveCanvas(
                                     change.consume()
 
                                     val current = controlPointsState.value
-                                    val rawX = change.position.x / size.width
-                                    val ny = (1f - change.position.y / size.height).coerceIn(0f, 1f)
+                                    val rawX = normalizeCurveX(change.position.x, size, graphInsetPx)
+                                    val ny = normalizeCurveY(change.position.y, size, graphInsetPx)
 
                                     // x 轴：由相邻点边界夹紧，不排序——消除抖动
                                     val minX = if (dragIdx > 0) current[dragIdx - 1].first + 0.005f else 0f
@@ -220,8 +218,8 @@ private fun CurveCanvas(
 
                                     if (!newPointAdded && (change.position - downPos).getDistance() > 4f) {
                                         // 手指开始移动：在 down 位置插入新点，立即进入拖动模式
-                                        val nx0 = (downPos.x / size.width).coerceIn(0.001f, 0.999f)
-                                        val ny0 = (1f - downPos.y / size.height).coerceIn(0f, 1f)
+                                        val nx0 = normalizeCurveX(downPos.x, size, graphInsetPx).coerceIn(0.001f, 0.999f)
+                                        val ny0 = normalizeCurveY(downPos.y, size, graphInsetPx)
                                         val newPt = Pair(nx0, ny0)
                                         val withNew = (controlPointsState.value + newPt).sortedBy { it.first }
                                         controlPointsState.value = withNew
@@ -231,8 +229,8 @@ private fun CurveCanvas(
 
                                     if (newPointAdded && dragIdx >= 0) {
                                         val current = controlPointsState.value
-                                        val rawX = change.position.x / size.width
-                                        val ny = (1f - change.position.y / size.height).coerceIn(0f, 1f)
+                                        val rawX = normalizeCurveX(change.position.x, size, graphInsetPx)
+                                        val ny = normalizeCurveY(change.position.y, size, graphInsetPx)
                                         val minX = if (dragIdx > 0) current[dragIdx - 1].first + 0.005f else 0f
                                         val maxX = if (dragIdx < current.size - 1) current[dragIdx + 1].first - 0.005f else 1f
                                         val nx = rawX.coerceIn(minX, maxX)
@@ -247,8 +245,8 @@ private fun CurveCanvas(
 
                                 // 纯点击（未拖动）：在抬起位置添加点
                                 if (!newPointAdded) {
-                                    val nx = (upPos.x / size.width).coerceIn(0.001f, 0.999f)
-                                    val ny = (1f - upPos.y / size.height).coerceIn(0f, 1f)
+                                    val nx = normalizeCurveX(upPos.x, size, graphInsetPx).coerceIn(0.001f, 0.999f)
+                                    val ny = normalizeCurveY(upPos.y, size, graphInsetPx)
                                     val updated = (controlPointsState.value + Pair(nx, ny))
                                         .sortedBy { it.first }
                                     controlPointsState.value = updated
@@ -264,7 +262,8 @@ private fun CurveCanvas(
             drawCurveCanvas(
                 controlPoints = controlPoints,
                 curveColor = curveColor,
-                canvasSize = size
+                canvasSize = size,
+                graphInset = graphInsetPx
             )
         }
     }
@@ -273,26 +272,35 @@ private fun CurveCanvas(
 private fun DrawScope.drawCurveCanvas(
     controlPoints: List<Pair<Float, Float>>,
     curveColor: Color,
-    canvasSize: Size
+    canvasSize: Size,
+    graphInset: Float
 ) {
-    val w = canvasSize.width
-    val h = canvasSize.height
+    val left = graphInset
+    val top = graphInset
+    val w = (canvasSize.width - graphInset * 2f).coerceAtLeast(1f)
+    val h = (canvasSize.height - graphInset * 2f).coerceAtLeast(1f)
 
     // 背景
-    drawRect(Color(0x661A1A1A))
+    drawRect(
+        color = Color(0x661A1A1A),
+        topLeft = Offset(left, top),
+        size = Size(w, h)
+    )
 
     // 网格线（4×4）
     val gridColor = Color.White.copy(alpha = 0.08f)
     for (i in 1..3) {
-        val x = w * i / 4f
-        val y = h * i / 4f
-        drawLine(gridColor, Offset(x, 0f), Offset(x, h), strokeWidth = 1f)
-        drawLine(gridColor, Offset(0f, y), Offset(w, y), strokeWidth = 1f)
+        val x = left + w * i / 4f
+        val y = top + h * i / 4f
+        drawLine(gridColor, Offset(x, top), Offset(x, top + h), strokeWidth = 1f)
+        drawLine(gridColor, Offset(left, y), Offset(left + w, y), strokeWidth = 1f)
     }
 
     // 边框
     drawRect(
         color = Color.White.copy(alpha = 0.15f),
+        topLeft = Offset(left, top),
+        size = Size(w, h),
         style = Stroke(1f)
     )
 
@@ -300,8 +308,8 @@ private fun DrawScope.drawCurveCanvas(
     val dashEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f))
     drawLine(
         color = Color.White.copy(alpha = 0.2f),
-        start = Offset(0f, h),
-        end = Offset(w, 0f),
+        start = Offset(left, top + h),
+        end = Offset(left + w, top),
         strokeWidth = 1f,
         pathEffect = dashEffect
     )
@@ -315,8 +323,8 @@ private fun DrawScope.drawCurveCanvas(
     val curvePath = Path()
     var firstPoint = true
     for (i in 0 until CurveUtils.LUT_SIZE) {
-        val cx = i / (CurveUtils.LUT_SIZE - 1f) * w
-        val cy = (1f - lut[i]) * h
+        val cx = left + i / (CurveUtils.LUT_SIZE - 1f) * w
+        val cy = top + (1f - lut[i]) * h
         if (firstPoint) {
             curvePath.moveTo(cx, cy)
             firstPoint = false
@@ -330,8 +338,8 @@ private fun DrawScope.drawCurveCanvas(
     val pointRadius = 5.dp.toPx()
     val pointBorderWidth = 1.5f
     for ((px, py) in controlPoints) {
-        val cx = px * w
-        val cy = (1f - py) * h
+        val cx = left + px * w
+        val cy = top + (1f - py) * h
         drawCircle(Color(0xFF1A1A1A), radius = pointRadius, center = Offset(cx, cy))
         drawCircle(
             curveColor,
@@ -364,18 +372,39 @@ private fun List<Pair<Float, Float>>.toFloatArrayOrNull(): FloatArray? {
     return if (CurveUtils.isIdentityCurve(arr)) null else arr
 }
 
+private fun normalizeCurveX(
+    x: Float,
+    size: androidx.compose.ui.unit.IntSize,
+    graphInset: Float
+): Float {
+    val graphWidth = (size.width - graphInset * 2f).coerceAtLeast(1f)
+    return ((x - graphInset) / graphWidth).coerceIn(0f, 1f)
+}
+
+private fun normalizeCurveY(
+    y: Float,
+    size: androidx.compose.ui.unit.IntSize,
+    graphInset: Float
+): Float {
+    val graphHeight = (size.height - graphInset * 2f).coerceAtLeast(1f)
+    return (1f - (y - graphInset) / graphHeight).coerceIn(0f, 1f)
+}
+
 /** 查找最近控制点的索引，超过阈值则返回 -1 */
 private fun findNearestIndex(
     points: List<Pair<Float, Float>>,
     pos: Offset,
     size: androidx.compose.ui.unit.IntSize,
+    graphInset: Float,
     threshold: Float
 ): Int {
     var nearestIdx = -1
     var nearestDist = threshold
+    val graphWidth = (size.width - graphInset * 2f).coerceAtLeast(1f)
+    val graphHeight = (size.height - graphInset * 2f).coerceAtLeast(1f)
     points.forEachIndexed { idx, (px, py) ->
-        val cx = px * size.width
-        val cy = (1f - py) * size.height
+        val cx = graphInset + px * graphWidth
+        val cy = graphInset + (1f - py) * graphHeight
         val dist = Offset(cx - pos.x, cy - pos.y).getDistance()
         if (dist < nearestDist) {
             nearestDist = dist

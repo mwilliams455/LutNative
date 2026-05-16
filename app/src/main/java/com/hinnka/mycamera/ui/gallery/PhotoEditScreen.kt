@@ -94,6 +94,7 @@ private data class PreviewRenderSignature(
     val editRawDROMode: String,
     val editRawDcpId: String?,
     val editRawBaselineLutId: String?,
+    val editRawBaselineRecipeParams: ColorRecipeParams?,
     val editComputationalAperture: Float?,
     val editFocusX: Float?,
     val editFocusY: Float?,
@@ -160,6 +161,7 @@ fun PhotoEditScreen(
     val editRawDROMode by viewModel.editRawDROMode.collectAsState()
     val editRawDcpId by viewModel.editRawDcpId.collectAsState()
     val editRawBaselineLutId by viewModel.editRawBaselineLutId.collectAsState()
+    val editRawBaselineRecipeParams by viewModel.editRawBaselineRecipeParams.collectAsState()
     val availableDcps = viewModel.availableDcps
     
     val editComputationalAperture by viewModel.editComputationalAperture.collectAsState()
@@ -210,6 +212,7 @@ fun PhotoEditScreen(
             editRawDROMode = editRawDROMode,
             editRawDcpId = editRawDcpId,
             editRawBaselineLutId = editRawBaselineLutId,
+            editRawBaselineRecipeParams = editRawBaselineRecipeParams,
             editComputationalAperture = editComputationalAperture,
             editFocusX = editFocusX,
             editFocusY = editFocusY,

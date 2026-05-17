@@ -140,6 +140,7 @@ private fun AiFocusTargetMode.displayName(): String {
         AiFocusTargetMode.OFF -> stringResource(R.string.settings_ai_focus_target_off)
         AiFocusTargetMode.AUTO -> stringResource(R.string.settings_ai_focus_target_auto)
         AiFocusTargetMode.PERSON -> stringResource(R.string.settings_ai_focus_target_person)
+        AiFocusTargetMode.FACE -> stringResource(R.string.settings_ai_focus_target_face)
         AiFocusTargetMode.ANIMAL -> stringResource(R.string.settings_ai_focus_target_animal)
         AiFocusTargetMode.BIRD -> stringResource(R.string.settings_ai_focus_target_bird)
         AiFocusTargetMode.VEHICLE -> stringResource(R.string.settings_ai_focus_target_vehicle)

@@ -52,7 +52,7 @@ class YoloXObjectDetector(context: Context) {
     private val outputs = mapOf(0 to boxesBuffer, 1 to scoresBuffer, 2 to classIdxBuffer)
 
     @Volatile
-    var targetMode: AiFocusTargetMode = AiFocusTargetMode.PERSON
+    var targetMode: AiFocusTargetMode = AiFocusTargetMode.OFF
 
     @Volatile
     var scoreThreshold: Float = 0.5f
@@ -231,6 +231,7 @@ class YoloXObjectDetector(context: Context) {
                 else -> 0
             }
             AiFocusTargetMode.PERSON -> if (classIndex == PERSON_CLASS) 3 else 0
+            AiFocusTargetMode.FACE -> if (classIndex == PERSON_CLASS) 3 else 0
             AiFocusTargetMode.ANIMAL -> if (classIndex in ANIMAL_CLASSES) 2 else 0
             AiFocusTargetMode.BIRD -> if (classIndex == BIRD_CLASS) 2 else 0
             AiFocusTargetMode.VEHICLE -> if (classIndex in GROUND_VEHICLE_CLASSES) 1 else 0

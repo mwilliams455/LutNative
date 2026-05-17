@@ -189,6 +189,7 @@
     <string name="settings_ai_focus_target_off">Off</string>
     <string name="settings_ai_focus_target_auto">Auto</string>
     <string name="settings_ai_focus_target_person">Person</string>
+    <string name="settings_ai_focus_target_face">Face</string>
     <string name="settings_ai_focus_target_animal">Animal</string>
     <string name="settings_ai_focus_target_bird">Bird</string>
     <string name="settings_ai_focus_target_vehicle">Vehicle</string>

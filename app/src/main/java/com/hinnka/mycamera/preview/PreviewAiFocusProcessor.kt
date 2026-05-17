@@ -58,7 +58,7 @@ class PreviewAiFocusProcessor(private val context: Context) {
     @Volatile
     private var processingStartTimeMs = 0L
     @Volatile
-    var targetMode: AiFocusTargetMode = AiFocusTargetMode.PERSON
+    var targetMode: AiFocusTargetMode = AiFocusTargetMode.OFF
     @Volatile
     var scoreThreshold: Float = 0.5f
     private var lastFocusTimeMs = 0L
@@ -183,13 +183,14 @@ class PreviewAiFocusProcessor(private val context: Context) {
         bitmap: Bitmap,
         detections: List<YoloXObjectDetector.Detection>,
     ): List<FocusCandidate> {
-        val personOnlyUsesFace = shouldDetectFaceFocus()
+        val usesFaceDetection = shouldDetectFaceFocus()
+        val faceOnlyMode = targetMode == AiFocusTargetMode.FACE
         val candidates = detections
-            .filterNot { personOnlyUsesFace && it.priority == PERSON_PRIORITY }
+            .filterNot { faceOnlyMode && it.priority == PERSON_PRIORITY }
             .map { it.toFocusCandidate() }
             .toMutableList()
         val personDetections = detections.filter { it.priority == PERSON_PRIORITY }
-        if (personOnlyUsesFace && personDetections.isNotEmpty()) {
+        if (usesFaceDetection && personDetections.isNotEmpty()) {
             lastFaceDetectTimeMs = System.currentTimeMillis()
             lastFaceDetectorUseTimeMs = lastFaceDetectTimeMs
             val faceFocus = SharedFaceDetLiteFocusDetector.detect(
@@ -220,7 +221,7 @@ class PreviewAiFocusProcessor(private val context: Context) {
     }
 
     private fun shouldDetectFaceFocus(): Boolean {
-        return targetMode == AiFocusTargetMode.PERSON || targetMode == AiFocusTargetMode.AUTO
+        return targetMode == AiFocusTargetMode.FACE || targetMode == AiFocusTargetMode.AUTO
     }
 
     private fun selectFocusTarget(

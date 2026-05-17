@@ -206,7 +206,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val focusPeakingEnabled: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.focusPeakingEnabled }
     val aiFocusTargetMode: StateFlow<AiFocusTargetMode> =
         userPreferencesRepository.userPreferences.map { it.aiFocusTargetMode }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, AiFocusTargetMode.PERSON)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, AiFocusTargetMode.OFF)
     val aiFocusScoreThreshold: StateFlow<Float> =
         userPreferencesRepository.userPreferences.map { it.aiFocusScoreThreshold }
             .stateIn(viewModelScope, SharingStarted.Eagerly, 0.5f)

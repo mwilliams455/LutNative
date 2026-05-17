@@ -187,6 +187,7 @@
     <string name="settings_ai_focus_target_off">关闭</string>
     <string name="settings_ai_focus_target_auto">自动</string>
     <string name="settings_ai_focus_target_person">人</string>
+    <string name="settings_ai_focus_target_face">人脸</string>
     <string name="settings_ai_focus_target_animal">动物</string>
     <string name="settings_ai_focus_target_bird">鸟类</string>
     <string name="settings_ai_focus_target_vehicle">车</string>

@@ -51,6 +51,7 @@ enum class AiFocusTargetMode {
     OFF,
     AUTO,
     PERSON,
+    FACE,
     ANIMAL,
     BIRD,
     VEHICLE,
@@ -87,7 +88,7 @@ data class UserPreferences(
     val showGrid: Boolean = false,  // 网格线显示
     val showLevelIndicator: Boolean = false,  // 水平仪显示
     val focusPeakingEnabled: Boolean = true,  // 手动对焦峰值显示
-    val aiFocusTargetMode: AiFocusTargetMode = AiFocusTargetMode.PERSON,
+    val aiFocusTargetMode: AiFocusTargetMode = AiFocusTargetMode.OFF,
     val aiFocusScoreThreshold: Float = 0.5f,
     val shutterSoundEnabled: Boolean = true,  // 快门声音
     val vibrationEnabled: Boolean = true,  // 拍摄震动
@@ -310,8 +311,8 @@ class UserPreferencesRepository(private val context: Context) {
                 showLevelIndicator = preferences[SHOW_LEVEL_INDICATOR] ?: false,
                 focusPeakingEnabled = preferences[FOCUS_PEAKING_ENABLED] ?: true,
                 aiFocusTargetMode = runCatching {
-                    AiFocusTargetMode.valueOf(preferences[AI_FOCUS_TARGET_MODE] ?: AiFocusTargetMode.PERSON.name)
-                }.getOrDefault(AiFocusTargetMode.PERSON),
+                    AiFocusTargetMode.valueOf(preferences[AI_FOCUS_TARGET_MODE] ?: AiFocusTargetMode.OFF.name)
+                }.getOrDefault(AiFocusTargetMode.OFF),
                 aiFocusScoreThreshold = (preferences[AI_FOCUS_SCORE_THRESHOLD] ?: 0.5f).coerceIn(0.05f, 0.95f),
                 shutterSoundEnabled = preferences[SHUTTER_SOUND_ENABLED] ?: true,
                 vibrationEnabled = preferences[VIBRATION_ENABLED] ?: true,

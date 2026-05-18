@@ -505,7 +505,14 @@ fun CameraScreen(
         } else if (isVideoMode) {
             width / videoAspectRatio
         } else {
-            (width - 24.dp) * 4 / 3 + 50.dp
+            val standardHeight = (width - 24.dp) * 4 / 3 + 50.dp
+            val topBarHeight = 80.dp
+            val bottomMinHeight = 196.dp // Precise height for parameterBar (52.dp) + controls (136.dp min + 8.dp buffer)
+            val navigationBarHeight = with(LocalDensity.current) {
+                WindowInsets.navigationBars.getBottom(this).toDp()
+            }
+            val maxCardHeight = (height - topBarHeight - bottomMinHeight - navigationBarHeight).coerceAtLeast(300.dp)
+            standardHeight.coerceAtMost(maxCardHeight)
         }
 
         val topBar = @Composable {

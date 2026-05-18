@@ -14,6 +14,8 @@ import com.hinnka.mycamera.video.VideoLogProfile
 import com.hinnka.mycamera.video.VideoRecorder
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.hypot
@@ -110,7 +112,7 @@ class LutRenderer : GLSurfaceView.Renderer {
     private var meteringFboId: Int = 0
     private var meteringTextureId: Int = 0
     private val METERING_SIZE = 32
-    private val lumaGrid = IntArray(METERING_SIZE * METERING_SIZE)
+    private val meteringExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var captureFboId: Int = 0
     private var captureTextureId: Int = 0
     private var recordFboId: Int = 0
@@ -2273,8 +2275,6 @@ class LutRenderer : GLSurfaceView.Renderer {
         }
     }
 
-    private val meteringBuffer =
-        ByteBuffer.allocateDirect(METERING_SIZE * METERING_SIZE * 4).order(ByteOrder.nativeOrder())
     private var lastRunMeteringTime = 0L
 
     private fun runMeteringInternal(
@@ -2332,17 +2332,32 @@ class LutRenderer : GLSurfaceView.Renderer {
         ) as? ByteBuffer
 
         if (mappedBuffer != null) {
-            meteringBuffer.rewind()
-            meteringBuffer.put(mappedBuffer)
+            val bytesCopy = ByteArray(pixelSize)
+            mappedBuffer.rewind()
+            mappedBuffer.get(bytesCopy)
             GLES30.glUnmapBuffer(GLES30.GL_PIXEL_PACK_BUFFER)
+
+            GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+            GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
+
+            val currentFocus = focusPoint
+            val currentMode = meteringMode
+
+            try {
+                if (!meteringExecutor.isShutdown) {
+                    meteringExecutor.execute {
+                        calculateMeteringResults(bytesCopy, currentFocus, currentMode)
+                    }
+                }
+            } catch (e: Exception) {
+                PLog.e(TAG, "Failed to dispatch metering task", e)
+            }
+        } else {
+            GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0)
+            GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+            GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
         }
-
-        GLES30.glBindBuffer(GLES30.GL_PIXEL_PACK_BUFFER, 0)
-        GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
-        GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
-
-        // 3. 计算直方图和测光 (CPU)
-        calculateMeteringResults()
     }
 
     private fun runDepthInputCaptureInternal(sourceTextureId: Int) {
@@ -2486,18 +2501,11 @@ class LutRenderer : GLSurfaceView.Renderer {
         GLES30.glViewport(0, 0, viewportWidth, viewportHeight)
     }
 
-    private val meteringBytes = ByteArray(METERING_SIZE * METERING_SIZE * 4)
-
-    private fun calculateMeteringResults() {
-        meteringBuffer.rewind()
-        meteringBuffer.get(meteringBytes)
-
+    private fun calculateMeteringResults(meteringBytes: ByteArray, focus: PointF?, mode: MeteringMode) {
         val histogram = IntArray(256)
         var weightedSumLuminance = 0.0
         var totalWeight = 0.0
-
-        val focus = focusPoint
-        val mode = meteringMode
+        val lumaGrid = IntArray(METERING_SIZE * METERING_SIZE)
 
         // 根据测光模式设置权重参数
         val (weightCenter, weightEdge, radiusSq) = when (mode) {
@@ -2633,6 +2641,11 @@ class LutRenderer : GLSurfaceView.Renderer {
      * 释放资源
      */
     fun release() {
+        try {
+            meteringExecutor.shutdown()
+        } catch (e: Exception) {
+            PLog.e(TAG, "Error shutting down metering executor", e)
+        }
         // 删除纹理
         if (cameraTextureId != 0) {
             GlUtils.deleteTexture(cameraTextureId)

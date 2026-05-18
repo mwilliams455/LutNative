@@ -188,9 +188,7 @@ private fun CurveCanvas(
                                     val ny = normalizeCurveY(change.position.y, size, graphInsetPx)
 
                                     // x 轴：由相邻点边界夹紧，不排序——消除抖动
-                                    val minX = if (dragIdx > 0) current[dragIdx - 1].first + 0.005f else 0f
-                                    val maxX = if (dragIdx < current.size - 1) current[dragIdx + 1].first - 0.005f else 1f
-                                    val nx = rawX.coerceIn(minX, maxX)
+                                    val nx = safeCoerceX(rawX, dragIdx, current)
 
                                     val updated = current.toMutableList()
                                     updated[dragIdx] = Pair(nx, ny)
@@ -231,9 +229,7 @@ private fun CurveCanvas(
                                         val current = controlPointsState.value
                                         val rawX = normalizeCurveX(change.position.x, size, graphInsetPx)
                                         val ny = normalizeCurveY(change.position.y, size, graphInsetPx)
-                                        val minX = if (dragIdx > 0) current[dragIdx - 1].first + 0.005f else 0f
-                                        val maxX = if (dragIdx < current.size - 1) current[dragIdx + 1].first - 0.005f else 1f
-                                        val nx = rawX.coerceIn(minX, maxX)
+                                        val nx = safeCoerceX(rawX, dragIdx, current)
                                         val updated = current.toMutableList()
                                         updated[dragIdx] = Pair(nx, ny)
                                         controlPointsState.value = updated
@@ -352,6 +348,31 @@ private fun DrawScope.drawCurveCanvas(
 }
 
 // ──────────────────────── 辅助函数 ────────────────────────
+
+/**
+ * 安全地限制控制点的 x 坐标，防止 minX > maxX 导致 coerceIn 崩溃。
+ * 如果由于邻近点距离太近而导致 minX > maxX，则退而使用极小缓冲值 (0.0001f)。
+ * 如果仍无法满足，则直接限制在两个相邻点之间，或返回相邻点的中点。
+ */
+private fun safeCoerceX(
+    rawX: Float,
+    dragIdx: Int,
+    current: List<Pair<Float, Float>>
+): Float {
+    val minX = if (dragIdx > 0) current[dragIdx - 1].first + 0.005f else 0f
+    val maxX = if (dragIdx < current.size - 1) current[dragIdx + 1].first - 0.005f else 1f
+    return if (minX <= maxX) {
+        rawX.coerceIn(minX, maxX)
+    } else {
+        val leftBound = if (dragIdx > 0) current[dragIdx - 1].first + 0.0001f else 0f
+        val rightBound = if (dragIdx < current.size - 1) current[dragIdx + 1].first - 0.0001f else 1f
+        if (leftBound <= rightBound) {
+            rawX.coerceIn(leftBound, rightBound)
+        } else {
+            (leftBound + rightBound) / 2f
+        }
+    }
+}
 
 /** 解析 FloatArray 为控制点列表 */
 private fun parsePoints(points: FloatArray): List<Pair<Float, Float>> {

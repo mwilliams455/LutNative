@@ -26,18 +26,32 @@ layout(push_constant, scalar) uniform PushConstants {
     uint bufferStride;
 } pc;
 
+const float MIN_ACCUM_WEIGHT = 1e-4;
+
 vec4 readAccum(int x, int y) {
     x = clamp(x, 0, int(pc.tileW) - 1);
     y = clamp(y, 0, int(pc.tileH) - 1);
     return accumulator.data[uint(y) * pc.bufferStride + uint(x)];
 }
 
+bool hasValidAccum(vec4 acc) {
+    return acc.a > MIN_ACCUM_WEIGHT &&
+           !any(isnan(acc)) && !any(isinf(acc));
+}
+
 vec3 normalizeYCC(vec4 acc) {
-    float invW = 1.0 / max(acc.a, 0.001);
+    if (!hasValidAccum(acc)) {
+        return vec3(0.0, 0.5, 0.5);
+    }
+    float invW = 1.0 / acc.a;
     float Y  = acc.r * invW;
     float Cb = acc.g * invW;
     float Cr = acc.b * invW;
-    return vec3(Y, Cb, Cr);
+    vec3 ycc = vec3(Y, Cb, Cr);
+    if (any(isnan(ycc)) || any(isinf(ycc))) {
+        return vec3(0.0, 0.5, 0.5);
+    }
+    return clamp(ycc, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0));
 }
 
 // YCbCr to Linear RGB (BT.709 inverse, matches accumulate.comp)
@@ -124,6 +138,9 @@ void main() {
                     int nx = cx + gx * stepScale;
                     int ny = cy + gy * stepScale;
                     vec4 nAcc = readAccum(nx, ny);
+                    if (!hasValidAccum(nAcc)) {
+                        continue;
+                    }
                     vec3 nYCC = normalizeYCC(nAcc);
 
                     // Spatial weight
@@ -166,6 +183,9 @@ void main() {
             for (int gy = -1; gy <= 1; ++gy) {
                 for (int gx = -1; gx <= 1; ++gx) {
                     vec4 nAcc = readAccum(lx + gx, ly + gy);
+                    if (!hasValidAccum(nAcc)) {
+                        continue;
+                    }
                     float nL = normalizeYCC(nAcc).x;
 
                     float wS = (gx == 0 && gy == 0) ? 1.0 : 0.5;
@@ -178,8 +198,10 @@ void main() {
                 }
             }
             // Blend denoised luma with original bilinear value to keep sub-pixel detail
-            float denoisedL = lumaSum / max(lumaW, 0.001);
-            ycc.x = mix(ycc.x, denoisedL, strength);
+            if (lumaW > 0.001) {
+                float denoisedL = lumaSum / lumaW;
+                ycc.x = mix(ycc.x, denoisedL, strength);
+            }
         }
 
         // ── Luma-only detail recovery ──

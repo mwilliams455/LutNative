@@ -46,6 +46,13 @@ layout(push_constant, scalar) uniform PushConstants {
     float frameWeight;
 } pc;
 
+vec3 sanitizeRgb(vec3 rgb) {
+    if (any(isnan(rgb)) || any(isinf(rgb))) {
+        return vec3(1.0);
+    }
+    return clamp(rgb, 0.0, 1.0);
+}
+
 vec4 sampleBicubic(sampler2D s, vec2 uv, vec2 size) {
     vec2 texelPos = uv * size - 0.5;
     ivec2 base = ivec2(floor(texelPos));
@@ -73,14 +80,16 @@ vec4 sampleBicubic(sampler2D s, vec2 uv, vec2 size) {
             ivec2 p = base + ivec2(i - 1, j - 1);
             p = clamp(p, ivec2(0), ivec2(size) - ivec2(1));
             float w = wx[i] * wy[j];
-            accum += texelFetch(s, p, 0) * w;
+            accum += vec4(sanitizeRgb(texelFetch(s, p, 0).rgb), 1.0) * w;
             weightSum += w;
         }
     }
-    return (abs(weightSum) > 1e-6) ? (accum / weightSum) : accum;
+    vec4 color = (abs(weightSum) > 1e-6) ? (accum / weightSum) : accum;
+    return vec4(sanitizeRgb(color.rgb), 1.0);
 }
 
 vec3 rgb2ycbcr(vec3 rgb) {
+    rgb = sanitizeRgb(rgb);
     float Y  = dot(rgb, vec3(0.2126, 0.7152, 0.0722));
     float Cb = dot(rgb, vec3(-0.1146, -0.3854, 0.5)) + 0.5;
     float Cr = dot(rgb, vec3(0.5, -0.4542, -0.0458)) + 0.5;
@@ -310,14 +319,14 @@ void main() {
                     sampleColor = sampleBicubic(rgbSampler, sampleUV, nativeSize).rgb;
                 }
             } else {
-                sampleColor = texture(rgbSampler, sampleUV).rgb;
+                sampleColor = sanitizeRgb(texture(rgbSampler, sampleUV).rgb);
             }
             vec3 sampleYCC = rgb2ycbcr(sampleColor);
 
             float robustness = centerRobustness;
             if (pc.isFirstFrame == 0) {
                 vec2 refSampleUV = (samplePos - alignment) / nativeSize;
-                vec3 sampleRefYCC = rgb2ycbcr(texture(referenceSampler, refSampleUV).rgb);
+                vec3 sampleRefYCC = rgb2ycbcr(sanitizeRgb(texture(referenceSampler, refSampleUV).rgb));
                 float sampleDiffSq = yccDiffSq(sampleYCC, sampleRefYCC);
                 float sampleResidual = max(0.0, sampleDiffSq - 4.5 * expectedSigma * expectedSigma) /
                                        max(expectedSigma * expectedSigma, 1e-10);

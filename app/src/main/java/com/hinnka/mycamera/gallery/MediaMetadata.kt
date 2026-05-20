@@ -164,13 +164,16 @@ data class MediaMetadata(
      * 从 RawMetadata 补齐信息
      */
     fun merge(raw: RawMetadata): MediaMetadata {
+        val shouldSwap = rotation == 90 || rotation == 270
+        val resolvedWidth = if (shouldSwap) raw.height else raw.width
+        val resolvedHeight = if (shouldSwap) raw.width else raw.height
         return copy(
             iso = raw.iso.takeIf { it > 0 } ?: iso,
             shutterSpeed = formatShutterSpeed(raw.shutterSpeed).takeIf { it.isNotEmpty() } ?: shutterSpeed,
             aperture = formatAperture(raw.aperture).takeIf { it.isNotEmpty() } ?: aperture,
             exposureBias = raw.exposureBias,
-            width = raw.width.takeIf { it > 0 } ?: width,
-            height = raw.height.takeIf { it > 0 } ?: height
+            width = resolvedWidth.takeIf { it > 0 } ?: width,
+            height = resolvedHeight.takeIf { it > 0 } ?: height
         )
     }
 

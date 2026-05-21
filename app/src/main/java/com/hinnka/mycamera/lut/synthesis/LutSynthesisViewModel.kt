@@ -8,6 +8,9 @@ import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.graphics.Paint
 import android.net.Uri
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hinnka.mycamera.R
@@ -30,6 +33,14 @@ import java.io.FileOutputStream
 import java.util.UUID
 
 class LutSynthesisViewModel(application: Application) : AndroidViewModel(application) {
+    private val billingManager = com.hinnka.mycamera.billing.BillingManagerImpl(application)
+    val isPurchased = billingManager.isPurchased
+    var showPaymentDialog by mutableStateOf(false)
+
+    fun purchase(activity: android.app.Activity) {
+        billingManager.purchase(activity)
+    }
+
     private val importManager = CustomImportManager(application)
     private val lutManager = LutManager(application)
     private val imageProcessor = LutImageProcessor()

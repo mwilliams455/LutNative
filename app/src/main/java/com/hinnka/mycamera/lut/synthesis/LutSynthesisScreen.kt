@@ -59,6 +59,7 @@ import com.hinnka.mycamera.ui.components.ColorRecipePanel
 import com.hinnka.mycamera.ui.components.CurveChannel
 import com.hinnka.mycamera.ui.components.CustomSliderThinThumb
 import com.hinnka.mycamera.ui.components.LutSelector
+import com.hinnka.mycamera.ui.components.PaymentDialog
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.ui.graphics.SolidColor
 
@@ -73,6 +74,7 @@ fun LutSynthesisScreen(
     val context = LocalContext.current
 
     val layers by viewModel.layers.collectAsState()
+    val isPurchased by viewModel.isPurchased.collectAsState()
     val recipe by viewModel.colorRecipe.collectAsState()
     val availableLuts by viewModel.availableLuts.collectAsState()
     val originalBitmap by viewModel.originalBitmap.collectAsState()
@@ -80,11 +82,13 @@ fun LutSynthesisScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val exportState by viewModel.exportState.collectAsState()
 
+    val synthesisStr = stringResource(R.string.lut_synthesis_title)
+
     var showLutSelector by remember { mutableStateOf(false) }
     var showBakeParamsSheet by remember { mutableStateOf(false) }
     var showExportDialog by remember { mutableStateOf(false) }
     var lutNameInput by remember { mutableStateOf("") }
-    var lutCategoryInput by remember { mutableStateOf("Synthesized") }
+    var lutCategoryInput by remember { mutableStateOf(synthesisStr) }
 
     val galleryLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -113,7 +117,7 @@ fun LutSynthesisScreen(
             CenterAlignedTopAppBar(
                 title = {
                     Text(
-                        text = stringResource(R.string.lut_synthesis_title),
+                        text = synthesisStr,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -130,7 +134,13 @@ fun LutSynthesisScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { showExportDialog = true },
+                        onClick = {
+                            if (isPurchased) {
+                                showExportDialog = true
+                            } else {
+                                viewModel.showPaymentDialog = true
+                            }
+                        },
                         enabled = layers.isNotEmpty() || !recipe.isDefault()
                     ) {
                         Icon(
@@ -646,7 +656,7 @@ fun LutSynthesisScreen(
                 TextButton(
                     onClick = {
                         val name = lutNameInput.trim().ifEmpty { "Synthesized_${System.currentTimeMillis()}" }
-                        val category = lutCategoryInput.trim().ifEmpty { context.getString(R.string.lut_synthesis_title) }
+                        val category = lutCategoryInput.trim().ifEmpty { synthesisStr }
                         viewModel.exportSynthesizedLut(name, category)
                         showExportDialog = false
                     }
@@ -688,5 +698,16 @@ fun LutSynthesisScreen(
                 }
             }
         }
+    }
+
+    if (viewModel.showPaymentDialog) {
+        val activity = context as? android.app.Activity
+        PaymentDialog(
+            onDismiss = { viewModel.showPaymentDialog = false },
+            onPurchase = {
+                viewModel.showPaymentDialog = false
+                activity?.let { viewModel.purchase(it) }
+            }
+        )
     }
 }

@@ -43,6 +43,7 @@ import com.hinnka.mycamera.raw.ColorSpace
 import com.hinnka.mycamera.ui.camera.autoRotate
 import com.hinnka.mycamera.ui.camera.LutEditBottomSheet
 import com.hinnka.mycamera.utils.PLog
+import com.hinnka.mycamera.ui.components.PaymentDialog
 import com.hinnka.mycamera.viewmodel.CameraViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -90,6 +91,7 @@ fun FilterManagementScreen(
     modifier: Modifier = Modifier
 ) {
     val currentLutId by viewModel.currentLutId.collectAsState()
+    val isPurchased by viewModel.isPurchased.collectAsState()
     val availableLuts = viewModel.availableLutList
     val customImportManager = viewModel.getCustomImportManager()
     val scope = rememberCoroutineScope()
@@ -662,8 +664,12 @@ fun FilterManagementScreen(
                             } else null,
                             onExport = if (!isSelectionMode) {
                                 {
-                                    exportingLut = lutInfo
-                                    showExportDialog = true
+                                    if (lutInfo.isBuiltIn && !isPurchased) {
+                                        viewModel.showPaymentDialog = true
+                                    } else {
+                                        exportingLut = lutInfo
+                                        showExportDialog = true
+                                    }
                                 }
                             } else null,
                             onEditCategory = if (!isSelectionMode) {
@@ -930,6 +936,17 @@ fun FilterManagementScreen(
                 },
                 containerColor = Color(0xFF1E1E1E),
                 shape = RoundedCornerShape(12.dp)
+            )
+        }
+
+        if (viewModel.showPaymentDialog) {
+            val activity = context as? android.app.Activity
+            PaymentDialog(
+                onDismiss = { viewModel.showPaymentDialog = false },
+                onPurchase = {
+                    viewModel.showPaymentDialog = false
+                    activity?.let { viewModel.purchase(it) }
+                }
             )
         }
 

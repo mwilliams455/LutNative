@@ -240,7 +240,8 @@ fun PhotoEditScreen(
 
     suspend fun renderPreview(
         photo: MediaData,
-        maxEdge: Int
+        maxEdge: Int,
+        cancelStaleResult: Boolean
     ) {
         val requestId = ++previewRenderRequestId
         val bitmap = withContext(Dispatchers.IO) {
@@ -253,7 +254,7 @@ fun PhotoEditScreen(
                 maxEdge = maxEdge
             )
         }
-        if (requestId == previewRenderRequestId && bitmap != null) {
+        if ((!cancelStaleResult || requestId == previewRenderRequestId) && bitmap != null) {
             previewBitmap = bitmap
             isLoadingPreview = false
         }
@@ -304,8 +305,8 @@ fun PhotoEditScreen(
         }
             .filter { it != null }
             .conflate()
-            .collectLatest {
-                renderPreview(photo, maxEdge = 1440)
+            .collect {
+                renderPreview(photo, maxEdge = 1440, cancelStaleResult = false)
             }
     }
 
@@ -318,7 +319,7 @@ fun PhotoEditScreen(
             .conflate()
             .debounce(250)
             .collectLatest {
-                renderPreview(photo, maxEdge = 4096)
+                renderPreview(photo, maxEdge = 4096, cancelStaleResult = true)
             }
     }
 

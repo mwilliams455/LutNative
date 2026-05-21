@@ -230,16 +230,11 @@ class HardwareLutVideoRenderer(
     fun renderFrame(textureId: Int, stMatrix: FloatArray, timestampUs: Long) {
         if (!isInitialized || textureId == 0 || shaderProgram == 0) return
 
-        val oldDisplay = EGL14.eglGetCurrentDisplay()
-        val oldDrawSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
-        val oldReadSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_READ)
-        val oldContext = EGL14.eglGetCurrentContext()
-
         if (eglDisplay != EGL14.EGL_NO_DISPLAY) {
             val currentContext = EGL14.eglGetCurrentContext()
             if (currentContext != eglContext) {
                 if (!EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-                    // Fail silently but log periodically or once
+                    PLog.e(TAG, "eglMakeCurrent failed before render: 0x${Integer.toHexString(EGL14.eglGetError())}")
                     return
                 }
             }
@@ -269,12 +264,6 @@ class HardwareLutVideoRenderer(
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, textureId)
         if (uCameraTextureLoc != -1) GLES30.glUniform1i(uCameraTextureLoc, 0)
-        
-        // 即使出错也打印一次，避免日志爆炸
-        val err = GLES30.glGetError()
-        if (err != GLES30.GL_NO_ERROR) {
-            PLog.e(TAG, "GL Error during bind: 0x${Integer.toHexString(err)} for texture $textureId")
-        }
 
         // 绘制
         if (aPositionLoc != -1) {
@@ -301,26 +290,6 @@ class HardwareLutVideoRenderer(
                 PLog.e(TAG, "eglSwapBuffers failed: 0x${Integer.toHexString(error)}")
             }
         }
-
-        restorePreviousEglContext(oldDisplay, oldDrawSurface, oldReadSurface, oldContext)
-    }
-
-    private fun restorePreviousEglContext(
-        oldDisplay: EGLDisplay,
-        oldDrawSurface: EGLSurface,
-        oldReadSurface: EGLSurface,
-        oldContext: EGLContext
-    ) {
-        if (oldDisplay == EGL14.EGL_NO_DISPLAY) {
-            EGL14.eglMakeCurrent(
-                EGL14.EGL_NO_DISPLAY,
-                EGL14.EGL_NO_SURFACE,
-                EGL14.EGL_NO_SURFACE,
-                EGL14.EGL_NO_CONTEXT
-            )
-            return
-        }
-        EGL14.eglMakeCurrent(oldDisplay, oldDrawSurface, oldReadSurface, oldContext)
     }
 
     fun release() {

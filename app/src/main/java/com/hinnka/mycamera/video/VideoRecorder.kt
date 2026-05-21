@@ -771,6 +771,31 @@ class VideoRecorder(
         buffer: ByteBuffer,
         info: MediaCodec.BufferInfo
     ) {
+        synchronized(muxerLock) {
+            if (!muxerStarted) {
+                val pending = if (isVideo) pendingVideoSamples else pendingAudioSamples
+                pending += copyEncodedSample(isVideo = isVideo, buffer = buffer, info = info)
+                return
+            }
+
+            val trackIndex = if (isVideo) videoTrackIndex else audioTrackIndex
+            if (trackIndex >= 0) {
+                val sanitizedInfo = sanitizeSampleInfo(isVideo = isVideo, info = info)
+                if (sanitizedInfo.size > 0 && sanitizedInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+                    val sampleBuffer = buffer.duplicate()
+                    sampleBuffer.position(info.offset)
+                    sampleBuffer.limit(info.offset + info.size)
+                    muxer?.writeSampleData(trackIndex, sampleBuffer.slice(), sanitizedInfo)
+                }
+            }
+        }
+    }
+
+    private fun copyEncodedSample(
+        isVideo: Boolean,
+        buffer: ByteBuffer,
+        info: MediaCodec.BufferInfo
+    ): EncodedSample {
         val sampleBytes = ByteArray(info.size)
         val duplicate = buffer.duplicate()
         duplicate.position(info.offset)
@@ -779,25 +804,10 @@ class VideoRecorder(
         val copiedInfo = MediaCodec.BufferInfo().apply {
             set(0, info.size, info.presentationTimeUs, info.flags)
         }
-
-        synchronized(muxerLock) {
-            if (!muxerStarted) {
-                val pending = if (isVideo) pendingVideoSamples else pendingAudioSamples
-                pending += EncodedSample(
-                    data = sampleBytes,
-                    info = sanitizeSampleInfo(isVideo = isVideo, info = copiedInfo)
-                )
-                return
-            }
-
-            val trackIndex = if (isVideo) videoTrackIndex else audioTrackIndex
-            if (trackIndex >= 0) {
-                val sanitizedInfo = sanitizeSampleInfo(isVideo = isVideo, info = copiedInfo)
-                if (sanitizedInfo.size > 0 && sanitizedInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
-                    muxer?.writeSampleData(trackIndex, ByteBuffer.wrap(sampleBytes), sanitizedInfo)
-                }
-            }
-        }
+        return EncodedSample(
+            data = sampleBytes,
+            info = sanitizeSampleInfo(isVideo = isVideo, info = copiedInfo)
+        )
     }
 
     private fun sanitizeSampleInfo(

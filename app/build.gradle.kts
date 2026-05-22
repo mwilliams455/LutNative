@@ -26,8 +26,8 @@ android {
         applicationId = "com.hinnka.mycamera"
         minSdk = 30
         targetSdk = 36
-        versionCode = 87
-        versionName = "1.18.3"
+        versionCode = 88
+        versionName = "1.18.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         

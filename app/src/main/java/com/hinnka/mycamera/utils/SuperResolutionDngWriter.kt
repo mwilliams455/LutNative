@@ -93,21 +93,18 @@ object SuperResolutionDngWriter {
             val input = rawBuffer.duplicate().order(ByteOrder.nativeOrder())
             input.rewind()
 
-            val resolvedUserBlackLevel = when (blackLevelMode) {
-                "0" -> 0f
-                "16" -> 16f
-                "64" -> 64f
-                "256" -> 256f
-                "512" -> 512f
-                "Custom" -> customBlackLevel ?: 0f
-                else -> null
-            }
+            val resolvedBlackLevel = RawProcessor.resolveBlackLevelForMode(
+                defaultBlackLevel = blackLevel,
+                blackLevelMode = blackLevelMode,
+                customBlackLevel = customBlackLevel
+            )
+            val hasBlackLevelOverride = blackLevelMode != null && !blackLevel.contentEquals(resolvedBlackLevel)
 
             val encodedBlackLevel = if (valueDomain == RawProcessor.RawBufferValueDomain.NORMALIZED_SENSOR_RANGE) {
-                if (resolvedUserBlackLevel != null) {
+                if (hasBlackLevelOverride) {
                     FloatArray(blackLevel.size) { i ->
                         val defaultBL = blackLevel[i]
-                        val correctedBL = resolvedUserBlackLevel
+                        val correctedBL = resolvedBlackLevel.getOrElse(i) { resolvedBlackLevel.firstOrNull() ?: defaultBL }
                         val defaultWL = whiteLevel.toFloat()
                         if (defaultWL > defaultBL) {
                             ((correctedBL - defaultBL) / (defaultWL - defaultBL) * 65535f).coerceIn(0f, 65535f)
@@ -119,8 +116,8 @@ object SuperResolutionDngWriter {
                     floatArrayOf(0f, 0f, 0f, 0f)
                 }
             } else {
-                if (resolvedUserBlackLevel != null) {
-                    FloatArray(blackLevel.size) { resolvedUserBlackLevel }
+                if (hasBlackLevelOverride) {
+                    resolvedBlackLevel
                 } else {
                     blackLevel
                 }
@@ -150,7 +147,7 @@ object SuperResolutionDngWriter {
             outputStream.write(header)
             writeRawImage(outputStream, input, imageByteCount.toInt())
             outputStream.flush()
-            PLog.i(TAG, "Wrote super-resolution DNG ${width}x${height}")
+            PLog.i(TAG, "Wrote super-resolution DNG ${width}x${height} blackLevel=${encodedBlackLevel.joinToString()} whiteLevel=$encodedWhiteLevel")
             true
         }.onFailure {
             PLog.w(TAG, "Failed to write super-resolution DNG ${width}x${height}", it)

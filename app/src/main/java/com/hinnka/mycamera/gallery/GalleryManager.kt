@@ -1688,6 +1688,17 @@ object GalleryManager {
                 exposureBias,
                 RawDemosaicProcessor.getInstance().getRawColorSpace()
             )
+            val stackBlackLevel = RawProcessor.resolveBlackLevelForMode(
+                defaultBlackLevel = rawMetadata.blackLevel,
+                blackLevelMode = metadata.rawBlackLevelMode,
+                customBlackLevel = metadata.rawCustomBlackLevel
+            )
+            if (!rawMetadata.blackLevel.contentEquals(stackBlackLevel)) {
+                PLog.d(
+                    TAG,
+                    "RAW stack black level override mode=${metadata.rawBlackLevelMode} value=${stackBlackLevel.joinToString()}"
+                )
+            }
 
             var currentUseSuperResolution = useSuperResolution
             var rawStackResult = MultiFrameStacker.processBurstRaw(
@@ -1695,7 +1706,7 @@ object GalleryManager {
                 currentUseSuperResolution,
                 superResolutionScale,
                 useGpuAcceleration,
-                masterBlackLevel = rawMetadata.blackLevel,
+                masterBlackLevel = stackBlackLevel,
                 whiteLevel = rawMetadata.whiteLevel.toInt(),
                 whiteBalanceGains = rawMetadata.whiteBalanceGains,
                 noiseModel = rawMetadata.noiseProfile,
@@ -1714,6 +1725,7 @@ object GalleryManager {
                 width = finalStackResult.width,
                 height = finalStackResult.height,
                 rawMetadata = rawMetadata,
+                stackBlackLevel = finalStackResult.blackLevel,
                 isNormalizedSensorData = finalStackResult.isNormalizedSensorData,
                 characteristics = characteristics,
                 captureResult = captureResult,
@@ -1842,6 +1854,7 @@ object GalleryManager {
         width: Int,
         height: Int,
         rawMetadata: RawMetadata,
+        stackBlackLevel: FloatArray,
         isNormalizedSensorData: Boolean,
         characteristics: CameraCharacteristics,
         captureResult: CaptureResult,
@@ -1864,7 +1877,7 @@ object GalleryManager {
                     rotation = rotation,
                     thumbnail = thumbnail,
                     cfaPattern = rawMetadata.cfaPattern,
-                    blackLevel = rawMetadata.blackLevel,
+                    blackLevel = stackBlackLevel,
                     whiteLevel = rawMetadata.whiteLevel.toInt(),
                     valueDomain = if (isNormalizedSensorData) {
                         RawProcessor.RawBufferValueDomain.NORMALIZED_SENSOR_RANGE
@@ -1872,8 +1885,8 @@ object GalleryManager {
                         RawProcessor.RawBufferValueDomain.SENSOR
                     },
                     customWriter = true,
-                    blackLevelMode = metadata.rawBlackLevelMode,
-                    customBlackLevel = metadata.rawCustomBlackLevel
+                    blackLevelMode = null,
+                    customBlackLevel = null
                 )
             }
         } catch (e: Throwable) {
@@ -1885,8 +1898,6 @@ object GalleryManager {
             tempDngFile.delete()
             return false
         }
-        patchSavedDngBlackLevel(tempDngFile, metadata)
-
         try {
             if (dngFile.exists()) {
                 dngFile.delete()

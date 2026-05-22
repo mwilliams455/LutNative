@@ -18,6 +18,7 @@ data class RawStackResult(
     val width: Int,
     val height: Int,
     val isNormalizedSensorData: Boolean,
+    val blackLevel: FloatArray = floatArrayOf(0f, 0f, 0f, 0f),
 )
 
 /**
@@ -260,7 +261,7 @@ object MultiFrameStacker {
 
         PLog.d(
             TAG,
-            "Starting RAW stacking for ${images.size} frames. Pattern=$cfaPattern SR=$enableSuperResolution scale=$superResolutionScale Vulkan=$useVulkan WL=$whiteLevel"
+            "Starting RAW stacking for ${images.size} frames. Pattern=$cfaPattern SR=$enableSuperResolution scale=$superResolutionScale Vulkan=$useVulkan BL=${masterBlackLevel.joinToString()} WL=$whiteLevel"
         )
         val outputScale = if (enableSuperResolution) superResolutionScale.coerceIn(1.0f, 2.0f) else 1.0f
         val useNativeSuperResolution = outputScale > 1.0f
@@ -302,7 +303,8 @@ object MultiFrameStacker {
                             fusedBayerBuffer = vulkanFusedBayer,
                             width = outWidth,
                             height = outHeight,
-                            isNormalizedSensorData = true
+                            isNormalizedSensorData = true,
+                            blackLevel = masterBlackLevel.copyOf(),
                         )
                     } else {
                         PLog.w(TAG, "Vulkan RAW stacking failed, falling back to CPU")
@@ -362,7 +364,8 @@ object MultiFrameStacker {
                 fusedBayerBuffer = fusedBayerBuffer,
                 width = stackedWidth,
                 height = stackedHeight,
-                isNormalizedSensorData = false
+                isNormalizedSensorData = false,
+                blackLevel = masterBlackLevel.copyOf(),
             )
 
         } finally {

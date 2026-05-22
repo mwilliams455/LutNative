@@ -33,6 +33,25 @@ object RawProcessor {
         NORMALIZED_SENSOR_RANGE,
     }
 
+    fun resolveBlackLevelForMode(
+        defaultBlackLevel: FloatArray,
+        blackLevelMode: String?,
+        customBlackLevel: Float?,
+    ): FloatArray {
+        val overrideBlackLevel = when (blackLevelMode) {
+            "0" -> 0f
+            "16" -> 16f
+            "64" -> 64f
+            "256" -> 256f
+            "512" -> 512f
+            "Custom" -> customBlackLevel ?: 0f
+            else -> null
+        }
+        return overrideBlackLevel?.let { level ->
+            FloatArray(defaultBlackLevel.size.coerceAtLeast(4)) { level }
+        } ?: defaultBlackLevel.copyOf()
+    }
+
     /**
      * 检查图像是否为 RAW 格式
      */

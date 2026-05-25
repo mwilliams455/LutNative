@@ -34,18 +34,25 @@ class PreviewDepthProcessor(private val context: Context) {
         if (isPrewarmed || isPrewarming) {
             return
         }
-        isPrewarming = true
         scope.launch {
-            try {
-                StartupTrace.mark("PreviewDepthProcessor.prewarm start")
-                SharedDepthEstimator.prewarm(context)
-                isPrewarmed = true
-                StartupTrace.mark("PreviewDepthProcessor.prewarm end")
-            } catch (e: Exception) {
-                PLog.e(TAG, "Failed to prewarm depth estimator", e)
-            } finally {
-                isPrewarming = false
-            }
+            prewarmBlocking()
+        }
+    }
+
+    suspend fun prewarmBlocking() {
+        if (isPrewarmed || isPrewarming) {
+            return
+        }
+        isPrewarming = true
+        try {
+            StartupTrace.mark("PreviewDepthProcessor.prewarm start")
+            SharedDepthEstimator.prewarm(context)
+            isPrewarmed = true
+            StartupTrace.mark("PreviewDepthProcessor.prewarm end")
+        } catch (e: Exception) {
+            PLog.e(TAG, "Failed to prewarm depth estimator", e)
+        } finally {
+            isPrewarming = false
         }
     }
 

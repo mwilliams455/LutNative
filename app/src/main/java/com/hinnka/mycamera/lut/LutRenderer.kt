@@ -513,14 +513,8 @@ class LutRenderer : GLSurfaceView.Renderer {
             }
         }
 
-        // 初始化直通着色器（用于测光和无效果渲染）
-        initPassthroughProgram()
-
         // 初始化测光 FBO
         initMeteringFbo()
-
-        // 初始化截图 FBO
-        initCaptureFbo()
 
         // 标记 Surface 已创建
         surfaceReady = true
@@ -537,21 +531,6 @@ class LutRenderer : GLSurfaceView.Renderer {
 
         // 通知调用者 SurfaceTexture 已准备好
         surfaceTexture?.let { onSurfaceTextureAvailable?.invoke(it) }
-
-        // Focus Peaking Shader
-        val vs = GlUtils.compileShader(GLES30.GL_VERTEX_SHADER, Shaders.SIMPLE_VERTEX_SHADER)
-        val peakFrag = GlUtils.compileShader(GLES30.GL_FRAGMENT_SHADER, Shaders.FRAGMENT_SHADER_FOCUS_PEAKING)
-        focusPeakingProgramId = GlUtils.linkProgram(vs, peakFrag)
-        GLES30.glDeleteShader(vs)
-        GLES30.glDeleteShader(peakFrag)
-        if (focusPeakingProgramId != 0) {
-            uPeakInputTexLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uInputTexture")
-            uPeakTexelSizeLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uTexelSize")
-            uPeakThresholdLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uThreshold")
-            uPeakColorLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uPeakColor")
-            aPeakPositionLoc = GLES30.glGetAttribLocation(focusPeakingProgramId, "aPosition")
-            aPeakTexCoordLoc = GLES30.glGetAttribLocation(focusPeakingProgramId, "aTexCoord")
-        }
 
         GlUtils.checkGlError("initShaderProgram")
     }
@@ -643,10 +622,7 @@ class LutRenderer : GLSurfaceView.Renderer {
 
         GLES30.glViewport(0, 0, width, height)
 
-        initFbo(width, height)
         initMeteringFbo()
-        initDepthInputFbo()
-        initAiFocusInputFbo()
 
         // 更新 MVP 矩阵以处理 center crop
         updateMVPMatrix()
@@ -954,8 +930,17 @@ class LutRenderer : GLSurfaceView.Renderer {
         val hasCreativeLayer = hasCreativeLayer()
         val hasDualLayer = hasBaselineLayer && hasCreativeLayer
         uploadPendingCurveTextures()
-        val needsFbo = (liveRecorder != null || activeVideoRecorder != null || postProcessEffectEnabled || bokehNeeded || aiFocusInputNeeded || hasDualLayer || (!isAutoFocus && focusPeakingEnabled)) &&
-            fboId != 0 && fboTextureId != 0
+        val requestedFbo = liveRecorder != null ||
+            activeVideoRecorder != null ||
+            postProcessEffectEnabled ||
+            bokehNeeded ||
+            aiFocusInputNeeded ||
+            hasDualLayer ||
+            (!isAutoFocus && focusPeakingEnabled)
+        if (requestedFbo && (fboId == 0 || fboTextureId == 0)) {
+            initFbo(viewportWidth, viewportHeight)
+        }
+        val needsFbo = requestedFbo && fboId != 0 && fboTextureId != 0
 
         if (needsFbo) {
             val identityMatrix = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
@@ -1440,11 +1425,6 @@ class LutRenderer : GLSurfaceView.Renderer {
             aCopyTexCoordLoc = GLES30.glGetAttribLocation(copyProgramId, "aTexCoord")
         }
 //        PLog.d(TAG, "Shader program created: $programId")
-        // === 初始化 HDF 实时预览着色器 ===
-        initHdfPrograms()
-        
-        // === 初始化 Bokeh 实时预览着色器 ===
-        initBokehProgram()
     }
 
     private fun initHdfPrograms() {
@@ -1539,6 +1519,7 @@ class LutRenderer : GLSurfaceView.Renderer {
     }
 
     private fun renderHdfPreviewBlur(sourceTexId: Int, width: Int, height: Int) {
+        if (!ensureHdfPrograms()) return
         setupHdfFbos(width, height)
         if (hdfExtractBlurHProgram == 0 || hdfBlurVProgram == 0) return
         val dsW = width / 4;
@@ -1570,6 +1551,7 @@ class LutRenderer : GLSurfaceView.Renderer {
     }
 
     private fun renderHalationPreviewBlur(sourceTexId: Int, width: Int, height: Int) {
+        if (!ensureHdfPrograms()) return
         setupHalationFbos(width, height)
         if (halationExtractBlurHProgram == 0 || halationBlurVProgram == 0) return
         val dsW = width / 4; val dsH = height / 4
@@ -1599,6 +1581,7 @@ class LutRenderer : GLSurfaceView.Renderer {
     }
 
     private fun drawPostProcessComposite(targetFboId: Int, width: Int, height: Int, sourceTextureId: Int) {
+        if (!ensureHdfPrograms()) return
         if (hdfCompositeProgram == 0) return
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, targetFboId)
         GLES30.glViewport(0, 0, width, height)
@@ -2353,6 +2336,10 @@ class LutRenderer : GLSurfaceView.Renderer {
 
     private fun runDepthInputCaptureInternal(sourceTextureId: Int) {
         if (onDepthInputAvailable == null || sourceTextureId == 0) return
+        if (depthInputFboId == 0 || depthInputTextureId == 0) {
+            initDepthInputFbo()
+        }
+        if (depthInputFboId == 0 || depthInputTextureId == 0) return
         val now = System.currentTimeMillis()
         if (now - lastRunDepthInputTime < 50) return
         lastRunDepthInputTime = now
@@ -2427,7 +2414,10 @@ class LutRenderer : GLSurfaceView.Renderer {
 
     private fun runAiFocusInputCaptureInternal(sourceTextureId: Int) {
         if (renderingPaused || onAiFocusInputAvailable == null || sourceTextureId == 0) return
-        if (aiFocusInputFboId == 0 || copyProgramId == 0) return
+        if (aiFocusInputFboId == 0 || aiFocusInputTextureId == 0) {
+            initAiFocusInputFbo()
+        }
+        if (aiFocusInputFboId == 0 || aiFocusInputTextureId == 0 || copyProgramId == 0) return
         val now = System.currentTimeMillis()
         if (now - lastRunAiFocusInputTime < 300) return
         lastRunAiFocusInputTime = now
@@ -3017,6 +3007,48 @@ class LutRenderer : GLSurfaceView.Renderer {
             aBokehTexCoordLoc = GLES30.glGetAttribLocation(bokehProgramId, "aTexCoord")
         }
     }
+
+    private fun ensureHdfPrograms(): Boolean {
+        if (hdfExtractBlurHProgram != 0 &&
+            hdfBlurVProgram != 0 &&
+            hdfCompositeProgram != 0 &&
+            halationExtractBlurHProgram != 0 &&
+            halationBlurVProgram != 0
+        ) {
+            return true
+        }
+        initHdfPrograms()
+        return hdfExtractBlurHProgram != 0 &&
+            hdfBlurVProgram != 0 &&
+            hdfCompositeProgram != 0 &&
+            halationExtractBlurHProgram != 0 &&
+            halationBlurVProgram != 0
+    }
+
+    private fun ensureBokehProgram(): Boolean {
+        if (bokehProgramId != 0) return true
+        initBokehProgram()
+        return bokehProgramId != 0
+    }
+
+    private fun ensureFocusPeakingProgram(): Boolean {
+        if (focusPeakingProgramId != 0) return true
+
+        val vs = GlUtils.compileShader(GLES30.GL_VERTEX_SHADER, Shaders.SIMPLE_VERTEX_SHADER)
+        val peakFrag = GlUtils.compileShader(GLES30.GL_FRAGMENT_SHADER, Shaders.FRAGMENT_SHADER_FOCUS_PEAKING)
+        focusPeakingProgramId = GlUtils.linkProgram(vs, peakFrag)
+        GLES30.glDeleteShader(vs)
+        GLES30.glDeleteShader(peakFrag)
+        if (focusPeakingProgramId != 0) {
+            uPeakInputTexLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uInputTexture")
+            uPeakTexelSizeLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uTexelSize")
+            uPeakThresholdLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uThreshold")
+            uPeakColorLoc = GLES30.glGetUniformLocation(focusPeakingProgramId, "uPeakColor")
+            aPeakPositionLoc = GLES30.glGetAttribLocation(focusPeakingProgramId, "aPosition")
+            aPeakTexCoordLoc = GLES30.glGetAttribLocation(focusPeakingProgramId, "aTexCoord")
+        }
+        return focusPeakingProgramId != 0
+    }
     
     private var uBokehDepthMatrixLoc: Int = 0
 
@@ -3077,7 +3109,7 @@ class LutRenderer : GLSurfaceView.Renderer {
     }
 
     private fun renderBokehPreview(inputTexId: Int, width: Int, height: Int): Int {
-        if (bokehProgramId == 0 || depthMap == null) {
+        if (depthMap == null || !ensureBokehProgram()) {
             return inputTexId
         }
 
@@ -3184,7 +3216,7 @@ class LutRenderer : GLSurfaceView.Renderer {
     }
 
     private fun renderFocusPeaking(inputTextureId: Int, width: Int, height: Int): Int {
-        if (focusPeakingProgramId == 0) return inputTextureId
+        if (!ensureFocusPeakingProgram()) return inputTextureId
 
         ensureFocusPeakingFbo(width, height)
         if (focusPeakingFboId == 0) return inputTextureId

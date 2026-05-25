@@ -89,18 +89,23 @@ class PreviewAiFocusProcessor(private val context: Context) {
 
     fun prewarm() {
         if (isPrewarmed || isPrewarming) return
-        isPrewarming = true
         scope.launch {
-            try {
-                StartupTrace.mark("PreviewAiFocusProcessor.prewarm start")
-                SharedYoloXObjectDetector.prewarm(context)
-                isPrewarmed = true
-                StartupTrace.mark("PreviewAiFocusProcessor.prewarm end")
-            } catch (e: Exception) {
-                PLog.e(TAG, "Failed to prewarm YOLOX object detector", e)
-            } finally {
-                isPrewarming = false
-            }
+            prewarmBlocking()
+        }
+    }
+
+    suspend fun prewarmBlocking() {
+        if (isPrewarmed || isPrewarming) return
+        isPrewarming = true
+        try {
+            StartupTrace.mark("PreviewAiFocusProcessor.prewarm start")
+            SharedYoloXObjectDetector.prewarm(context)
+            isPrewarmed = true
+            StartupTrace.mark("PreviewAiFocusProcessor.prewarm end")
+        } catch (e: Exception) {
+            PLog.e(TAG, "Failed to prewarm YOLOX object detector", e)
+        } finally {
+            isPrewarming = false
         }
     }
 

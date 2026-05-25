@@ -203,6 +203,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     var isExpanded by mutableStateOf(false)
 
     var isAiFocusBusy by mutableStateOf(false)
+    private var startupPrewarmJob: Job? = null
 
     // 新增设置项 StateFlow
     val showLevelIndicator: Flow<Boolean> = userPreferencesRepository.userPreferences.map { it.showLevelIndicator }
@@ -867,13 +868,27 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun prewarmDepthEstimator() {
-        cameraController.previewDepthProcessor.prewarm()
-        cameraController.previewAiFocusProcessor.prewarm()
-        viewModelScope.launch {
-            RawDemosaicProcessor.getInstance().prewarmDepthEstimator(getApplication<Application>())
-        }
-        viewModelScope.launch {
+        if (startupPrewarmJob?.isActive == true) return
+
+        val cameraState = state.value
+        val rawAutoExposureNeedsDepth = cameraState.captureMode == CaptureMode.PHOTO &&
+                cameraState.isRawSupported &&
+                useRaw.value &&
+                rawAutoExposure.value
+        val shouldPrewarmDepth = cameraState.isVirtualApertureEnabled || rawAutoExposureNeedsDepth
+        val shouldPrewarmAiFocus = aiFocusTargetMode.value != AiFocusTargetMode.OFF
+
+        startupPrewarmJob = viewModelScope.launch {
             prewarmRawDcp(rawDcpId.firstOrNull())
+            delay(100)
+            if (shouldPrewarmDepth) {
+                cameraController.previewDepthProcessor.prewarmBlocking()
+                RawDemosaicProcessor.getInstance().prewarmDepthEstimator(getApplication<Application>())
+                delay(100)
+            }
+            if (shouldPrewarmAiFocus) {
+                cameraController.previewAiFocusProcessor.prewarmBlocking()
+            }
         }
     }
 

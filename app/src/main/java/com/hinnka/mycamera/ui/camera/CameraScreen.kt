@@ -70,6 +70,7 @@ import com.hinnka.mycamera.MyCameraApplication
 import com.hinnka.mycamera.R
 import com.hinnka.mycamera.camera.AspectRatio
 import com.hinnka.mycamera.camera.CameraState
+import com.hinnka.mycamera.data.AiFocusTargetMode
 import com.hinnka.mycamera.lut.BaselineColorCorrectionTarget
 import com.hinnka.mycamera.model.ColorRecipeParams
 import com.hinnka.mycamera.ui.components.*
@@ -126,6 +127,7 @@ fun CameraScreen(
     val useMultipleExposure by viewModel.useMultipleExposure.collectAsState()
     val useMFSR by viewModel.useMFSR.collectAsState()
     val useLivePhoto by viewModel.useLivePhoto.collectAsState()
+    val aiFocusTargetMode by viewModel.aiFocusTargetMode.collectAsState()
     val enableDevelopAnimation by viewModel.enableDevelopAnimation.collectAsState()
     val hlgHardwareCompatibilityEnabled by viewModel.hlgHardwareCompatibilityEnabled.collectAsState()
     val phantomMode by viewModel.phantomMode.collectAsState()
@@ -790,7 +792,11 @@ fun CameraScreen(
                         onMeteringUpdated = { w, l -> viewModel.handleMeteringUpdate(w, l) },
                         onHighlightPointUpdated = { hx, hy -> viewModel.handleHighlightPointUpdate(hx, hy) },
                         onDepthInputAvailable = { viewModel.handleDepthMapUpdate(it) },
-                        onAiFocusInputAvailable = { viewModel.handleAiFocusInputUpdate(it) },
+                        onAiFocusInputAvailable = if (aiFocusTargetMode == AiFocusTargetMode.OFF) {
+                            null
+                        } else {
+                            { viewModel.handleAiFocusInputUpdate(it) }
+                        },
                         onGLSurfaceViewReady = {
                             viewModel.glSurfaceView = it
                         },

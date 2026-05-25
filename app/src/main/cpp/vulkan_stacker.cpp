@@ -17,6 +17,7 @@
     VkResult err = x;                                                          \
     if (err) {                                                                 \
       LOGE("Detected Vulkan error: %d at %s:%d", err, __FILE__, __LINE__);     \
+      throw std::runtime_error("Vulkan call failed");                          \
     }                                                                          \
   } while (0)
 
@@ -223,7 +224,12 @@ VulkanImageStacker::VulkanImageStacker(uint32_t w, uint32_t h, bool sr)
   if (!VulkanManager::getInstance().init()) {
     throw std::runtime_error("Failed to initialize VulkanManager");
   }
-  initVulkanResources();
+  try {
+    initVulkanResources();
+  } catch (...) {
+    releaseVulkanResources();
+    throw;
+  }
 }
 
 VulkanImageStacker::~VulkanImageStacker() {
@@ -239,6 +245,16 @@ void VulkanImageStacker::initVulkanResources() {
     throw std::runtime_error("VulkanManager is not ready");
   }
 
+  VkPhysicalDeviceProperties deviceProperties{};
+  vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+  LOGI("initVulkanResources: device=%s vendor=0x%x device=0x%x api=%u.%u.%u "
+       "maxStorageBufferRange=%u",
+       deviceProperties.deviceName, deviceProperties.vendorID,
+       deviceProperties.deviceID, VK_VERSION_MAJOR(deviceProperties.apiVersion),
+       VK_VERSION_MINOR(deviceProperties.apiVersion),
+       VK_VERSION_PATCH(deviceProperties.apiVersion),
+       deviceProperties.limits.maxStorageBufferRange);
+
   // Create Accumulator Tiles
   uint32_t scale = enableSuperRes ? 2 : 1;
   uint32_t fullW = width * scale;
@@ -251,6 +267,22 @@ void VulkanImageStacker::initVulkanResources() {
   // Pad tile size slightly for safety
   VkDeviceSize accumBufferSize =
       (VkDeviceSize)(tileW + 16) * (tileH + 16) * sizeof(float) * 4;
+  VkDeviceSize stagingSize = (VkDeviceSize)fullW * fullH * 4;
+  VkDeviceSize kpSize =
+      (VkDeviceSize)width * height * sizeof(float) * 4; // vec4
+  VkDeviceSize maxStorageBufferRange =
+      deviceProperties.limits.maxStorageBufferRange;
+  if (maxStorageBufferRange > 0 &&
+      (accumBufferSize > maxStorageBufferRange ||
+       stagingSize > maxStorageBufferRange || kpSize > maxStorageBufferRange)) {
+    LOGE("Vulkan stacker buffers exceed device storage buffer range. "
+         "accum=%llu staging=%llu kernel=%llu limit=%llu size=%ux%u SR=%d",
+         (unsigned long long)accumBufferSize,
+         (unsigned long long)stagingSize, (unsigned long long)kpSize,
+         (unsigned long long)maxStorageBufferRange, width, height,
+         enableSuperRes ? 1 : 0);
+    throw std::runtime_error("Vulkan storage buffer range is too small");
+  }
 
   int numTiles = numTilesX * numTilesY;
   LOGI("initVulkanResources: Tiles: %d (%dx%d)", numTiles, numTilesX,
@@ -336,7 +368,6 @@ void VulkanImageStacker::initVulkanResources() {
   vkUnmapMemory(device, alignmentUploadMemory);
 
   // Staging Buffer
-  VkDeviceSize stagingSize = (VkDeviceSize)fullW * fullH * 4;
   VkBufferCreateInfo stagingInfo{};
   stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   stagingInfo.size = stagingSize;
@@ -376,8 +407,6 @@ void VulkanImageStacker::initVulkanResources() {
   poolInfo.pPoolSizes = poolSizes;
   VK_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool));
 
-  VkPhysicalDeviceProperties deviceProperties{};
-  vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
   gpuTimestampPeriodNs = deviceProperties.limits.timestampPeriod;
   gpuTimestampSupported =
       (deviceProperties.limits.timestampComputeAndGraphics == VK_TRUE);
@@ -408,9 +437,6 @@ void VulkanImageStacker::initVulkanResources() {
   vm.endSingleTimeCommands(cb);
 
   // Phase 2: Kernel Params Buffer (Native Resolution - much safer for VRAM)
-  VkDeviceSize kpSize =
-      (VkDeviceSize)width * height * sizeof(float) * 4; // vec4
-
   VkBufferCreateInfo kpInfo{};
   kpInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
   kpInfo.size = kpSize;

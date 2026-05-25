@@ -1509,13 +1509,14 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
      * 批量分享选中的照片
      */
     fun shareSelectedPhotos() {
-        if (selectedPhotos.isEmpty()) return
+        val photosToShare = selectedPhotos.toList()
+        if (photosToShare.isEmpty()) return
 
         viewModelScope.launch {
             _isSharing.value = true
             try {
                 val context = getApplication<Application>()
-                val requests = selectedPhotos.mapNotNull { prepareShareRequest(it) }
+                val requests = photosToShare.mapNotNull { prepareShareRequest(it) }
                 if (requests.isNotEmpty()) {
                     val uris = ArrayList(requests.map { it.uri })
                     val mimeType = if (requests.any { it.mimeType.startsWith("video/") }) {
@@ -2525,11 +2526,12 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
      * 批量导出选中的照片
      */
     fun exportSelectedPhotos(onComplete: (Int) -> Unit = {}) {
-        if (selectedPhotos.isEmpty()) return
+        val selectedSnapshot = selectedPhotos.toList()
+        if (selectedSnapshot.isEmpty()) return
 
         viewModelScope.launch {
             _isExporting.value = true
-            val toExport = selectedPhotos.filter { it.isImage }
+            val toExport = selectedSnapshot.filter { it.isImage }
             val total = toExport.size
             exportProgress = 0 to total
             

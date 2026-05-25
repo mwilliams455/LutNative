@@ -762,9 +762,6 @@ class PhotoProcessor(
                     template,
                     finalMetadata,
                 )
-                if (framedResult != result) {
-                    result.recycle()
-                }
                 result = framedResult
             }
         }

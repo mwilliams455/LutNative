@@ -17,6 +17,7 @@ import android.media.ImageReader
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Size
 import android.view.Surface
@@ -49,6 +50,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -115,6 +117,7 @@ class Camera2Controller(private val context: Context) {
     private var captureSession: CameraCaptureSession? = null
     private var previewRequestBuilder: CaptureRequest.Builder? = null
     private var previewSessionGeneration: Long = 0L
+    private val previewUpdateScheduled = AtomicBoolean(false)
 
     private var previewSurface: Surface? = null
     private var imageReader: ImageReader? = null
@@ -2692,8 +2695,17 @@ class Camera2Controller(private val context: Context) {
      * 更新预览
      */
     private fun updatePreview() {
-        // 关键修复：检查相机和会话是否仍然有效
-        // 避免在相机关闭后的回调中调用 setRepeatingRequest
+        val handler = cameraHandler
+        if (handler != null && Looper.myLooper() != handler.looper) {
+            if (!previewUpdateScheduled.compareAndSet(false, true)) return
+            handler.post {
+                previewUpdateScheduled.set(false)
+                updatePreview()
+            }
+            return
+        }
+
+        // 检查相机和会话是否仍然有效，避免在相机关闭后的回调中调用 setRepeatingRequest。
         val device = cameraDevice
         val session = captureSession
         val builder = previewRequestBuilder

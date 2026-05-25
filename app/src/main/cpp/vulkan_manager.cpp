@@ -1,6 +1,7 @@
 #include "vulkan_manager.h"
 #include <android/log.h>
 #include <cstring>
+#include <stdexcept>
 
 #define TAG "PLog_VulkanManager"
 
@@ -277,7 +278,9 @@ uint32_t VulkanManager::findMemoryType(uint32_t typeFilter,
       return i;
     }
   }
-  return 0;
+  LOGE("No matching Vulkan memory type. typeFilter=0x%x properties=0x%x",
+       typeFilter, properties);
+  throw std::runtime_error("No matching Vulkan memory type");
 }
 
 VkCommandBuffer VulkanManager::beginSingleTimeCommands() {
@@ -287,27 +290,56 @@ VkCommandBuffer VulkanManager::beginSingleTimeCommands() {
   allocInfo.commandPool = commandPool;
   allocInfo.commandBufferCount = 1;
 
-  VkCommandBuffer commandBuffer;
-  vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+  VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+  VkResult result = vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+  if (result != VK_SUCCESS || commandBuffer == VK_NULL_HANDLE) {
+    LOGE("Failed to allocate single-time command buffer: %d", result);
+    throw std::runtime_error("Failed to allocate Vulkan command buffer");
+  }
 
   VkCommandBufferBeginInfo beginInfo{};
   beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
   beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-  vkBeginCommandBuffer(commandBuffer, &beginInfo);
+  result = vkBeginCommandBuffer(commandBuffer, &beginInfo);
+  if (result != VK_SUCCESS) {
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+    LOGE("Failed to begin single-time command buffer: %d", result);
+    throw std::runtime_error("Failed to begin Vulkan command buffer");
+  }
   return commandBuffer;
 }
 
 void VulkanManager::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
-  vkEndCommandBuffer(commandBuffer);
+  if (commandBuffer == VK_NULL_HANDLE) {
+    throw std::runtime_error("Cannot submit null Vulkan command buffer");
+  }
+
+  VkResult result = vkEndCommandBuffer(commandBuffer);
+  if (result != VK_SUCCESS) {
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+    LOGE("Failed to end single-time command buffer: %d", result);
+    throw std::runtime_error("Failed to end Vulkan command buffer");
+  }
 
   VkSubmitInfo submitInfo{};
   submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
   submitInfo.commandBufferCount = 1;
   submitInfo.pCommandBuffers = &commandBuffer;
 
-  vkQueueSubmit(computeQueue, 1, &submitInfo, VK_NULL_HANDLE);
-  vkQueueWaitIdle(computeQueue);
+  result = vkQueueSubmit(computeQueue, 1, &submitInfo, VK_NULL_HANDLE);
+  if (result != VK_SUCCESS) {
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+    LOGE("Failed to submit single-time command buffer: %d", result);
+    throw std::runtime_error("Failed to submit Vulkan command buffer");
+  }
+
+  result = vkQueueWaitIdle(computeQueue);
+  if (result != VK_SUCCESS) {
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+    LOGE("Failed while waiting for Vulkan queue idle: %d", result);
+    throw std::runtime_error("Failed waiting for Vulkan queue");
+  }
 
   vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }

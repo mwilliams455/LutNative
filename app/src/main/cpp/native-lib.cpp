@@ -1157,8 +1157,15 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_addVulkanFrameNative(
   if (!buffer)
     return JNI_FALSE;
 
-  bool success = stacker->addFrame(buffer);
-  return success ? JNI_TRUE : JNI_FALSE;
+  try {
+    bool success = stacker->addFrame(buffer);
+    return success ? JNI_TRUE : JNI_FALSE;
+  } catch (const std::exception &e) {
+    LOGE("addVulkanFrameNative failed: %s", e.what());
+  } catch (...) {
+    LOGE("addVulkanFrameNative failed with unknown error");
+  }
+  return JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL
@@ -1177,9 +1184,16 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_processVulkanStackNative(
     return JNI_FALSE;
   }
 
-  bool success =
-      stacker->processStack(static_cast<uint32_t *>(bitmapPixels), info.width,
-                            info.height, info.stride, rotation);
+  bool success = false;
+  try {
+    success =
+        stacker->processStack(static_cast<uint32_t *>(bitmapPixels), info.width,
+                              info.height, info.stride, rotation);
+  } catch (const std::exception &e) {
+    LOGE("processVulkanStackNative failed: %s", e.what());
+  } catch (...) {
+    LOGE("processVulkanStackNative failed with unknown error");
+  }
 
   if (outBitmap) {
     AndroidBitmap_unlockPixels(env, outBitmap);
@@ -1200,7 +1214,14 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_resetVulkanStackerNative(
   auto *stacker = reinterpret_cast<VulkanImageStacker *>(stackerPtr);
   if (!stacker)
     return JNI_FALSE;
-  return stacker->resetForReuse() ? JNI_TRUE : JNI_FALSE;
+  try {
+    return stacker->resetForReuse() ? JNI_TRUE : JNI_FALSE;
+  } catch (const std::exception &e) {
+    LOGE("resetVulkanStackerNative failed: %s", e.what());
+  } catch (...) {
+    LOGE("resetVulkanStackerNative failed with unknown error");
+  }
+  return JNI_FALSE;
 }
 
 /**
@@ -1357,8 +1378,15 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_addVulkanRawFrameNative(
     return JNI_FALSE;
   }
 
-  bool success = stacker->addFrame(data, rowStride, cfaPattern);
-  return success ? JNI_TRUE : JNI_FALSE;
+  try {
+    bool success = stacker->addFrame(data, rowStride, cfaPattern);
+    return success ? JNI_TRUE : JNI_FALSE;
+  } catch (const std::exception &e) {
+    LOGE("addVulkanRawFrameNative failed: %s", e.what());
+  } catch (...) {
+    LOGE("addVulkanRawFrameNative failed with unknown error");
+  }
+  return JNI_FALSE;
 }
 
 JNIEXPORT jboolean JNICALL
@@ -1376,8 +1404,15 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_processVulkanRawStackNative
   }
 
   jlong capacity = env->GetDirectBufferCapacity(outputBuffer);
-  bool success = stacker->processStack(outData, (size_t)capacity);
-  return success ? JNI_TRUE : JNI_FALSE;
+  try {
+    bool success = stacker->processStack(outData, (size_t)capacity);
+    return success ? JNI_TRUE : JNI_FALSE;
+  } catch (const std::exception &e) {
+    LOGE("processVulkanRawStackNative failed: %s", e.what());
+  } catch (...) {
+    LOGE("processVulkanRawStackNative failed with unknown error");
+  }
+  return JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL
@@ -1393,7 +1428,14 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_resetVulkanRawStackerNative
   auto *stacker = reinterpret_cast<VulkanRawStacker *>(stackerPtr);
   if (!stacker)
     return JNI_FALSE;
-  return stacker->resetForReuse() ? JNI_TRUE : JNI_FALSE;
+  try {
+    return stacker->resetForReuse() ? JNI_TRUE : JNI_FALSE;
+  } catch (const std::exception &e) {
+    LOGE("resetVulkanRawStackerNative failed: %s", e.what());
+  } catch (...) {
+    LOGE("resetVulkanRawStackerNative failed with unknown error");
+  }
+  return JNI_FALSE;
 }
 
 JNIEXPORT void JNICALL

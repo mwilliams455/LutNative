@@ -870,25 +870,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     fun prewarmDepthEstimator() {
         if (startupPrewarmJob?.isActive == true) return
 
-        val cameraState = state.value
-        val rawAutoExposureNeedsDepth = cameraState.captureMode == CaptureMode.PHOTO &&
-                cameraState.isRawSupported &&
-                useRaw.value &&
-                rawAutoExposure.value
-        val shouldPrewarmDepth = cameraState.isVirtualApertureEnabled || rawAutoExposureNeedsDepth
-        val shouldPrewarmAiFocus = aiFocusTargetMode.value != AiFocusTargetMode.OFF
-
         startupPrewarmJob = viewModelScope.launch {
             prewarmRawDcp(rawDcpId.firstOrNull())
-            delay(100)
-            if (shouldPrewarmDepth) {
-                cameraController.previewDepthProcessor.prewarmBlocking()
-                RawDemosaicProcessor.getInstance().prewarmDepthEstimator(getApplication<Application>())
-                delay(100)
-            }
-            if (shouldPrewarmAiFocus) {
-                cameraController.previewAiFocusProcessor.prewarmBlocking()
-            }
         }
     }
 

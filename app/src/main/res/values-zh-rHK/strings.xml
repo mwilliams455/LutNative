@@ -238,6 +238,7 @@
     <string name="recipe_scope_lut">LUT 預設</string>
     <string name="recipe_scope_photo">僅此照片</string>
     <string name="recipe_scope_photo_reset">恢復 LUT 預設</string>
+    <string name="color_recipe_reset_all">重設所有參數</string>
     <string name="recipe_scope_photo_hint">調整僅作用於這張照片</string>
 
     <!-- Color Recipe Parameters -->

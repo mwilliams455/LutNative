@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -202,6 +205,32 @@ fun ColorRecipePanel(
         }
     }
 
+    fun resetAllParams() {
+        if (!hideNonBakeable) {
+            onParamsChange(ColorRecipeParams.DEFAULT)
+            return
+        }
+
+        val defaultPaletteState = ColorPaletteState.DEFAULT
+        val visibleParams = parameterGroups
+            .flatten()
+            .filter(isBakeable) + calibrationGroups.flatMap { it.second } + lchGroups.flatMap { it.second }
+        onParamsChange(
+            resetParams(
+                currentParams.copy(
+                    paletteX = defaultPaletteState.x,
+                    paletteY = defaultPaletteState.y,
+                    paletteDensity = defaultPaletteState.density,
+                    masterCurvePoints = null,
+                    redCurvePoints = null,
+                    greenCurvePoints = null,
+                    blueCurvePoints = null
+                ),
+                visibleParams
+            )
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -343,47 +372,70 @@ fun ColorRecipePanel(
                 .background(Color.Black)
                 .padding(8.dp)
         ) {
-            Row(modifier = Modifier.fillMaxSize().horizontalScroll(rememberScrollState())) {
-                tabs.forEachIndexed { index, title ->
-                    if (hideNonBakeable && (title == R.string.recipe_tab_lens || title == R.string.recipe_tab_remarks)) {
-                        return@forEachIndexed
-                    }
-                    val isSelected = selectedTabIndex == index && isExpanded
-                    val backgroundColor by animateColorAsState(
-                        if (isSelected) Color.White.copy(alpha = 0.2f) else Color.Transparent,
-                        label = "tabBackground"
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .widthIn(min = 48.dp)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(backgroundColor)
-                            .pointerInput(index, currentParams) {
-                                detectTapGestures(
-                                    onTap = {
-                                        selectedTabIndex = index
-                                        isExpanded = true
-                                    },
-                                    onDoubleTap = {
-                                        selectedTabIndex = index
-                                        isExpanded = true
-                                        resetTab(index)
-                                    }
-                                )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = stringResource(title),
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.6f),
-                            modifier = Modifier.padding(horizontal = 4.dp)
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .horizontalScroll(rememberScrollState())
+                ) {
+                    tabs.forEachIndexed { index, title ->
+                        if (hideNonBakeable && (title == R.string.recipe_tab_lens || title == R.string.recipe_tab_remarks)) {
+                            return@forEachIndexed
+                        }
+                        val isSelected = selectedTabIndex == index && isExpanded
+                        val backgroundColor by animateColorAsState(
+                            if (isSelected) Color.White.copy(alpha = 0.2f) else Color.Transparent,
+                            label = "tabBackground"
                         )
+
+                        Box(
+                            modifier = Modifier
+                                .widthIn(min = 48.dp)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(backgroundColor)
+                                .pointerInput(index, currentParams) {
+                                    detectTapGestures(
+                                        onTap = {
+                                            selectedTabIndex = index
+                                            isExpanded = true
+                                        },
+                                        onDoubleTap = {
+                                            selectedTabIndex = index
+                                            isExpanded = true
+                                            resetTab(index)
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = stringResource(title),
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.padding(horizontal = 4.dp)
+                            )
+                        }
                     }
                 }
+
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = stringResource(R.string.color_recipe_reset_all),
+                    tint = Color.White.copy(alpha = 0.72f),
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.12f))
+                        .clickable { resetAllParams() }
+                        .padding(7.dp)
+                )
             }
         }
 

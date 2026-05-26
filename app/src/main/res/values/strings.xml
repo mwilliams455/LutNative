@@ -342,6 +342,7 @@
     <string name="recipe_scope_lut">LUT Default</string>
     <string name="recipe_scope_photo">This Photo</string>
     <string name="recipe_scope_photo_reset">Reset to LUT Default</string>
+    <string name="color_recipe_reset_all">Reset all parameters</string>
     <string name="recipe_scope_photo_hint">Adjustments apply to this photo only</string>
 
     <!-- Color Recipe Parameters -->

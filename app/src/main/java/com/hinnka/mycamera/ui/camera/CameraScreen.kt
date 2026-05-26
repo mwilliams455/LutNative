@@ -100,6 +100,20 @@ enum class ActivePanel {
 private const val InitialPreviewTransitionDelayMillis = 150L
 private const val PreviewTransitionRevealDurationMillis = 800
 private const val RawCaptureTapDebounceMillis = 1000L
+private const val DefaultShutterSpeedNs = 1_000_000_000f / 60f
+private const val DefaultIso = 100f
+private const val DefaultAwbTemperature = 5000f
+private const val DefaultFocusDistance = 0f
+
+private fun CameraParameter.defaultResetValue(): Float {
+    return when (this) {
+        CameraParameter.EXPOSURE_COMPENSATION -> 0f
+        CameraParameter.SHUTTER_SPEED -> DefaultShutterSpeedNs
+        CameraParameter.ISO -> DefaultIso
+        CameraParameter.FOCUS -> DefaultFocusDistance
+        CameraParameter.WHITE_BALANCE -> DefaultAwbTemperature
+    }
+}
 
 @Composable
 fun CameraScreen(
@@ -613,6 +627,7 @@ fun CameraScreen(
                     CameraParameter.SHUTTER_SPEED, CameraParameter.ISO, CameraParameter.WHITE_BALANCE, CameraParameter.FOCUS -> true
                     else -> false
                 },
+                resetValue = selectedParameter.defaultResetValue(),
                 onValueChange = { value ->
                     when (selectedParameter) {
                         CameraParameter.EXPOSURE_COMPENSATION -> viewModel.setExposureCompensation((value / state.getExposureCompensationStep()).roundToInt())

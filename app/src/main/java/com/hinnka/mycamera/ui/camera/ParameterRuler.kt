@@ -52,6 +52,7 @@ fun ParameterRuler(
     maxValue: Float,
     isAdjustable: Boolean,
     showAutoButton: Boolean,
+    resetValue: Float? = null,
     onValueChange: (Float) -> Unit,
     onAutoModeToggle: () -> Unit,
     modifier: Modifier = Modifier
@@ -59,6 +60,7 @@ fun ParameterRuler(
     val yellow = Color(0xFFFFD700)
 
     val currentValueState by rememberUpdatedState(currentValue)
+    val resetValueState by rememberUpdatedState(resetValue)
     var selectedValue by remember(parameter) { mutableStateOf(currentValue) }
     val isAdjustableState by rememberUpdatedState(isAdjustable)
     val scaleValues = remember(parameter, minValue, maxValue) {
@@ -110,17 +112,28 @@ fun ParameterRuler(
                     .fillMaxHeight()
                     .padding(horizontal = 16.dp)
                     .pointerInput(minValue, maxValue) {
-                        detectTapGestures {
-                            if (isAdjustableState) {
-                                val width = size.width
-                                val stepWidth = width / scaleValues.size
-                                val index = (it.x / stepWidth).toInt().coerceIn(0, scaleValues.lastIndex)
-                                selectedValue = scaleValues[index]
-                                if (selectedValue != currentValueState) {
-                                    onValueChange(selectedValue)
+                        detectTapGestures(
+                            onDoubleTap = {
+                                val value = resetValueState
+                                if (isAdjustableState && value != null) {
+                                    selectedValue = value
+                                    if (value != currentValueState) {
+                                        onValueChange(value)
+                                    }
+                                }
+                            },
+                            onTap = {
+                                if (isAdjustableState) {
+                                    val width = size.width
+                                    val stepWidth = width / scaleValues.size
+                                    val index = (it.x / stepWidth).toInt().coerceIn(0, scaleValues.lastIndex)
+                                    selectedValue = scaleValues[index]
+                                    if (selectedValue != currentValueState) {
+                                        onValueChange(selectedValue)
+                                    }
                                 }
                             }
-                        }
+                        )
                     }
                     .pointerInput(minValue, maxValue) {
                         detectDragGestures { change, _ ->

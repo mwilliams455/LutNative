@@ -326,7 +326,10 @@ fun CameraScreen(
         previewTransitionToken += 1
         previewTransitionAwaitingResume = true
         previewTransitionSawPause = false
-        onSwitch()
+        scope.launch {
+            withFrameNanos { }
+            onSwitch()
+        }
     }
 
     fun switchToLensWithPreviewTransition(cameraId: String) {

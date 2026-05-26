@@ -149,8 +149,12 @@ class LutRenderer : GLSurfaceView.Renderer {
     // FBO 相关
     private var fboId: Int = 0
     private var fboTextureId: Int = 0
+    private var fboWidth: Int = 0
+    private var fboHeight: Int = 0
     private var stackFboId: Int = 0
     private var stackTextureId: Int = 0
+    private var stackFboWidth: Int = 0
+    private var stackFboHeight: Int = 0
 
     // Copy Shader (FBO -> Screen)
     private var copyProgramId: Int = 0
@@ -575,8 +579,12 @@ class LutRenderer : GLSurfaceView.Renderer {
         isAiFocusBusy = false
         fboId = 0
         fboTextureId = 0
+        fboWidth = 0
+        fboHeight = 0
         stackFboId = 0
         stackTextureId = 0
+        stackFboWidth = 0
+        stackFboHeight = 0
         copyProgramId = 0
         hdfExtractBlurHProgram = 0
         hdfBlurVProgram = 0
@@ -647,6 +655,10 @@ class LutRenderer : GLSurfaceView.Renderer {
             GLES30.glDeleteTextures(1, intArrayOf(stackTextureId), 0)
             stackTextureId = 0
         }
+        fboWidth = 0
+        fboHeight = 0
+        stackFboWidth = 0
+        stackFboHeight = 0
 
         val ids = IntArray(1)
         GLES30.glGenFramebuffers(1, ids, 0)
@@ -678,6 +690,8 @@ class LutRenderer : GLSurfaceView.Renderer {
 
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, 0)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+        fboWidth = width
+        fboHeight = height
 
         GLES30.glGenFramebuffers(1, ids, 0)
         stackFboId = ids[0]
@@ -699,6 +713,19 @@ class LutRenderer : GLSurfaceView.Renderer {
         )
         GLES30.glBindTexture(GLES30.GL_TEXTURE_2D, 0)
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
+        stackFboWidth = width
+        stackFboHeight = height
+    }
+
+    private fun isMainFboReady(width: Int, height: Int): Boolean {
+        return fboId != 0 &&
+            fboTextureId != 0 &&
+            stackFboId != 0 &&
+            stackTextureId != 0 &&
+            fboWidth == width &&
+            fboHeight == height &&
+            stackFboWidth == width &&
+            stackFboHeight == height
     }
 
     private fun hasBaselineLayer(): Boolean {
@@ -937,7 +964,7 @@ class LutRenderer : GLSurfaceView.Renderer {
             aiFocusInputNeeded ||
             hasDualLayer ||
             (!isAutoFocus && focusPeakingEnabled)
-        if (requestedFbo && (fboId == 0 || fboTextureId == 0)) {
+        if (requestedFbo && !isMainFboReady(viewportWidth, viewportHeight)) {
             initFbo(viewportWidth, viewportHeight)
         }
         val needsFbo = requestedFbo && fboId != 0 && fboTextureId != 0

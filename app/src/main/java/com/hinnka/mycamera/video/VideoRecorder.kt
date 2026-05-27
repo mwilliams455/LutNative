@@ -92,6 +92,7 @@ class VideoRecorder(
     private var requestedOrientationHintDegrees: Int = 0
     private var preferredAudioInputId: String = VIDEO_AUDIO_INPUT_AUTO
     private var requestedColorConfig: VideoEncoderColorRequest = VideoEncoderColorRequest()
+    private var preparedEncoderColorConfig: VideoEncoderColorConfig? = null
 
     private var requestedSize = android.util.Size(1080, 1920)
     private var requestedFps = 30
@@ -109,11 +110,10 @@ class VideoRecorder(
     private var errorCallback: ((String) -> Unit)? = null
     private var finishCallback: ((Uri?) -> Unit)? = null
     private var audioBytesQueued = 0L
-    private var videoStartTimestampUs: Long? = null
-    private var lastVideoPresentationTimeUs = 0L
     private var lastAcceptedFrameTimestampUs = Long.MIN_VALUE
     private var frameSelectionStartTimestampUs = Long.MIN_VALUE
     private var lastAcceptedFrameSlot = Long.MIN_VALUE
+    private var lastEncodedFrameSlot = Long.MIN_VALUE
     private var lastMuxedVideoPresentationTimeUs = Long.MIN_VALUE
     private var lastMuxedAudioPresentationTimeUs = Long.MIN_VALUE
     private var pendingFrame: PendingFrame? = null
@@ -160,6 +160,7 @@ class VideoRecorder(
         frameSelectionStartTimestampUs = Long.MIN_VALUE
         lastAcceptedFrameSlot = Long.MIN_VALUE
         lastAcceptedFrameTimestampUs = Long.MIN_VALUE
+        lastEncodedFrameSlot = Long.MIN_VALUE
         totalPausedDurationUs = 0L
         pauseStartTimeUs = 0L
         isPaused = false
@@ -171,7 +172,21 @@ class VideoRecorder(
         statsRenderTimeTotalMs = 0L
         statsRenderTimeMaxMs = 0L
         stopRequested = false
+        try {
+            prepareVideoEncoder()
+            createMuxer()
+            audioEnabled = initAudioEncoder(startLoop = false)
+            startDrains()
+        } catch (e: Exception) {
+            PLog.e(TAG, "Failed to prepare video recording before start", e)
+            cleanupPreparedStart()
+            errorCallback?.invoke("Failed to prepare video recording: ${e.localizedMessage ?: "Unknown error"}")
+            return false
+        }
         isRecording = true
+        if (audioEnabled) {
+            startAudioLoop()
+        }
         PLog.d(
             TAG,
             "Video recording prepared: ${requestedSize.width}x${requestedSize.height} @ " +
@@ -274,6 +289,30 @@ class VideoRecorder(
     private fun initEncoders(sharedContext: EGLContext, sharedDisplay: EGLDisplay) {
         val width = requestedSize.width
         val height = requestedSize.height
+        if (videoEncoder == null) {
+            prepareVideoEncoder()
+        }
+        val encoderSurface = inputSurface ?: throw IllegalStateException("Video encoder input surface is not prepared")
+        val encoderColorConfig = preparedEncoderColorConfig ?: VideoEncoderColorConfig.sdrDisplay()
+        renderer = HardwareLutVideoRenderer(
+            width = width,
+            height = height,
+            lutConfig = null,
+            colorRecipeParams = null,
+            encoderColorConfig = encoderColorConfig
+        ).apply {
+            initialize(encoderSurface, sharedContext, sharedDisplay)
+        }
+
+        lastSharedContext = sharedContext
+        lastSharedDisplay = sharedDisplay
+        PLog.d(TAG, "Video renderer initialized: ${width}x${height} @ ${requestedFps}fps")
+    }
+
+    private fun prepareVideoEncoder() {
+        if (videoEncoder != null && inputSurface != null) return
+        val width = requestedSize.width
+        val height = requestedSize.height
         val videoBitrate = (requestedBitrateMbps * 1_000_000).coerceIn(2_000_000, 300_000_000)
 
         videoEncoder = MediaCodec.createEncoderByType(requestedCodecMime).apply {
@@ -285,21 +324,18 @@ class VideoRecorder(
                 PLog.w(TAG, "CBR bitrate mode not supported, falling back to VBR")
                 MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR
             }
-
             val resolvedColorConfig = resolveVideoEncoderColorConfig(codecInfo, requestedCodecMime, requestedColorConfig)
+            preparedEncoderColorConfig = resolvedColorConfig
             val format = MediaFormat.createVideoFormat(requestedCodecMime, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, videoBitrate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, requestedFps)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, I_FRAME_INTERVAL)
-                // 实时编码优先级，避免编码延迟堆积
                 setInteger(MediaFormat.KEY_PRIORITY, 0)
                 setInteger(MediaFormat.KEY_BITRATE_MODE, bitrateMode)
-                // 禁用 B 帧，降低编码延迟
                 setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
                 resolvedColorConfig.applyTo(this)
             }
-
             try {
                 configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 inputSurface = createInputSurface()
@@ -317,17 +353,14 @@ class VideoRecorder(
                     throw e
                 }
             }
-
             PLog.i(
                 TAG,
-                "Configured video encoder: mime=$requestedCodecMime, bitrateMode=${if (bitrateMode == 2) "CBR" else "VBR"}, " +
-                    "colorPipeline=${resolvedColorConfig.pipeline}, " +
-                    "colorStandard=${resolvedColorConfig.colorStandard}, colorTransfer=${resolvedColorConfig.colorTransfer}, " +
-                    "colorRange=${resolvedColorConfig.colorRange}, codecProfile=${resolvedColorConfig.codecProfile}, " +
-                    "prefer10BitSurface=${resolvedColorConfig.prefer10BitInputSurface}, request=${requestedColorConfig.logProfile.name}, " +
-                    "hasLut=${requestedColorConfig.hasActiveLut}"
+                "Prepared video encoder: mime=$requestedCodecMime, bitrateMode=${if (bitrateMode == 2) "CBR" else "VBR"}, " +
+                    "colorPipeline=${resolvedColorConfig.pipeline}, colorStandard=${resolvedColorConfig.colorStandard}, " +
+                    "colorTransfer=${resolvedColorConfig.colorTransfer}, colorRange=${resolvedColorConfig.colorRange}, " +
+                    "codecProfile=${resolvedColorConfig.codecProfile}, prefer10BitSurface=${resolvedColorConfig.prefer10BitInputSurface}, " +
+                    "request=${requestedColorConfig.logProfile.name}, hasLut=${requestedColorConfig.hasActiveLut}"
             )
-
             if (requestedColorConfig.logProfile.isEnabled && resolvedColorConfig.codecProfile == null) {
                 PLog.w(
                     TAG,
@@ -335,28 +368,10 @@ class VideoRecorder(
                         "Recording will continue, but encoded Log compatibility may be reduced."
                 )
             }
-
-            renderer = HardwareLutVideoRenderer(
-                width = width,
-                height = height,
-                lutConfig = null,
-                colorRecipeParams = null,
-                encoderColorConfig = resolvedColorConfig
-            ).apply {
-                initialize(inputSurface!!, sharedContext, sharedDisplay)
-            }
         }
-
-        lastSharedContext = sharedContext
-        lastSharedDisplay = sharedDisplay
-
-        audioEnabled = initAudioEncoder()
-        createMuxer()
-        startDrains()
-        PLog.d(TAG, "Encoders initialized: ${width}x${height} @ ${requestedFps}fps")
     }
 
-    private fun initAudioEncoder(): Boolean {
+    private fun initAudioEncoder(startLoop: Boolean = true): Boolean {
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             PLog.w(TAG, "Audio permission missing, continue without audio")
             return false
@@ -384,7 +399,9 @@ class VideoRecorder(
                     throw IllegalStateException("AudioRecord not initialized")
                 }
                 applyPreferredAudioInput(this)
-                startRecording()
+                if (startLoop) {
+                    startRecording()
+                }
             }
 
             audioEncoder = MediaCodec.createEncoderByType(AUDIO_MIME).apply {
@@ -396,7 +413,9 @@ class VideoRecorder(
                 start()
             }
 
-            startAudioLoop()
+            if (startLoop) {
+                startAudioLoop()
+            }
             true
         } catch (e: Exception) {
             PLog.e(TAG, "Failed to initialize audio encoder", e)
@@ -441,6 +460,14 @@ class VideoRecorder(
         val recorder = audioRecord ?: return
         val encoder = audioEncoder ?: return
         audioRecordJob = scope.launch {
+            try {
+                if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                    recorder.startRecording()
+                }
+            } catch (e: Exception) {
+                PLog.w(TAG, "Failed to start audio recording loop: ${e.message}")
+                return@launch
+            }
             val buffer = ByteArray(4096)
             while (isRecording && !stopRequested) {
                 if (isPaused) {
@@ -507,20 +534,9 @@ class VideoRecorder(
         return frames * 1_000_000L / AUDIO_SAMPLE_RATE
     }
 
-    private fun normalizeVideoPresentationTime(timestampUs: Long): Long {
-        val startTimestampUs = videoStartTimestampUs ?: timestampUs.also {
-            videoStartTimestampUs = it
-        }
-        val normalized = (timestampUs - startTimestampUs - totalPausedDurationUs).coerceAtLeast(0L)
-        val minFrameStepUs = 1_000_000L / requestedFps.coerceAtLeast(1)
-        val nextPresentationTimeUs = if (lastVideoPresentationTimeUs == 0L) {
-            normalized
-        } else {
-            normalized.coerceAtLeast(lastVideoPresentationTimeUs + minFrameStepUs)
-        }
-        return nextPresentationTimeUs.also {
-            lastVideoPresentationTimeUs = it
-        }
+    private fun presentationTimeForSlot(slot: Long): Long {
+        val fps = requestedFps.coerceAtLeast(1)
+        return (slot.coerceAtLeast(0L) * 1_000_000L) / fps.toLong()
     }
 
     private fun shouldEncodeFrame(timestampUs: Long): Boolean {
@@ -537,7 +553,7 @@ class VideoRecorder(
             return true
         }
 
-        val elapsedUs = (timestampUs - frameSelectionStartTimestampUs).coerceAtLeast(0L)
+        val elapsedUs = (timestampUs - frameSelectionStartTimestampUs - totalPausedDurationUs).coerceAtLeast(0L)
         val slot = (elapsedUs * fps.toLong()) / 1_000_000L
         if (slot <= lastAcceptedFrameSlot) {
             return false
@@ -550,7 +566,7 @@ class VideoRecorder(
 
     private fun drainPendingFrames() {
         while (true) {
-            val frame = synchronized(pendingFrameLock) {
+            var frame = synchronized(pendingFrameLock) {
                 val nextFrame = pendingFrame
                 if (nextFrame == null) {
                     renderLoopRunning = false
@@ -565,7 +581,7 @@ class VideoRecorder(
             }
 
             try {
-                if (videoEncoder == null) {
+                if (renderer == null) {
                     try {
                         initEncoders(frame.sharedContext, frame.sharedDisplay)
                     } catch (e: Exception) {
@@ -580,7 +596,11 @@ class VideoRecorder(
                     }
                 }
                 val videoRenderer = renderer ?: continue
-                val presentationTimeUs = normalizeVideoPresentationTime(frame.timestampUs)
+                val frameSlot = lastAcceptedFrameSlot.takeIf { it != Long.MIN_VALUE } ?: 0L
+                if (lastEncodedFrameSlot != Long.MIN_VALUE && frameSlot <= lastEncodedFrameSlot) {
+                    continue
+                }
+                val presentationTimeUs = presentationTimeForSlot(frameSlot)
                 val renderStartMs = android.os.SystemClock.elapsedRealtime()
                 videoRenderer.renderFrame(frame.textureId, frame.transformMatrix, presentationTimeUs)
                 val renderCostMs = (android.os.SystemClock.elapsedRealtime() - renderStartMs).coerceAtLeast(0L)
@@ -589,7 +609,8 @@ class VideoRecorder(
                 if (renderCostMs > statsRenderTimeMaxMs) {
                     statsRenderTimeMaxMs = renderCostMs
                 }
-//                logRenderStatsIfNeeded()
+                lastEncodedFrameSlot = frameSlot
+                // logRenderStatsIfNeeded()
             } catch (e: Exception) {
                 val diagnostic = if (e is MediaCodec.CodecException) {
                     "isTransient=${e.isTransient}, isRecoverable=${e.isRecoverable}, errorCode=${e.errorCode}"
@@ -620,7 +641,8 @@ class VideoRecorder(
             TAG,
             "Video encoder stats: requested=${requestedFps}, incomingFps=${"%.1f".format(incomingFps)}, " +
                 "acceptedFps=${"%.1f".format(acceptedFps)}, renderedFps=${"%.1f".format(renderedFps)}, " +
-                "pendingDrops=$statsReplacedPendingFrames, avgRenderMs=${"%.1f".format(avgRenderMs)}, maxRenderMs=$statsRenderTimeMaxMs"
+                "pendingDrops=$statsReplacedPendingFrames, avgRenderMs=${"%.1f".format(avgRenderMs)}, " +
+                "maxRenderMs=$statsRenderTimeMaxMs"
         )
 
         statsWindowStartMs = nowMs
@@ -992,9 +1014,8 @@ class VideoRecorder(
             videoFormat = null
             audioFormat = null
             audioBytesQueued = 0L
-            videoStartTimestampUs = null
-            lastVideoPresentationTimeUs = 0L
             lastAcceptedFrameTimestampUs = Long.MIN_VALUE
+            lastEncodedFrameSlot = Long.MIN_VALUE
             lastMuxedVideoPresentationTimeUs = Long.MIN_VALUE
             lastMuxedAudioPresentationTimeUs = Long.MIN_VALUE
         }
@@ -1002,6 +1023,63 @@ class VideoRecorder(
             pendingFrame = null
             renderLoopRunning = false
         }
+    }
+
+    private fun cleanupPreparedStart() {
+        try {
+            renderer?.release()
+        } catch (_: Exception) {
+        }
+        renderer = null
+        try {
+            inputSurface?.release()
+        } catch (_: Exception) {
+        }
+        inputSurface = null
+        try {
+            videoEncoder?.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            videoEncoder?.release()
+        } catch (_: Exception) {
+        }
+        videoEncoder = null
+        preparedEncoderColorConfig = null
+        try {
+            audioRecord?.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            audioRecord?.release()
+        } catch (_: Exception) {
+        }
+        audioRecord = null
+        try {
+            audioEncoder?.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            audioEncoder?.release()
+        } catch (_: Exception) {
+        }
+        audioEncoder = null
+        pendingVideoOutput?.let { output ->
+            try {
+                output.descriptor.close()
+            } catch (_: Exception) {
+            }
+            VideoMediaStoreWriter.discardPendingVideo(context, output.uri)
+        }
+        pendingVideoOutput = null
+        try {
+            muxer?.release()
+        } catch (_: Exception) {
+        }
+        muxer = null
+        isRecording = false
+        stopRequested = false
+        resetMuxerState()
     }
 
     fun release() {

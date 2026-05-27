@@ -313,7 +313,7 @@ class LutRenderer : GLSurfaceView.Renderer {
     // 相机 SurfaceTexture
     private var surfaceTexture: SurfaceTexture? = null
     private var frameAvailable = false
-    private val frameSyncObject = Object()
+    private val frameSyncObject = Any()
 
     // 标记 Surface 是否已创建（GL 上下文是否可用）
     private var surfaceReady = false

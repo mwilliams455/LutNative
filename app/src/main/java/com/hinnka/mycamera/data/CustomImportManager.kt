@@ -195,8 +195,15 @@ class CustomImportManager(private val context: Context) {
                 }
             } ?: return null
 
+            var parsedName: String? = null
+            if (fileName.endsWith(".xmp", ignoreCase = true) && displayName.isNullOrBlank()) {
+                openInputStream(uri)?.use { inputStream ->
+                    parsedName = XmpLutParser.parseName(inputStream)
+                }
+            }
+
             // 生成显示名称
-            val name = displayName ?: fileName.substringBeforeLast('.')
+            val name = displayName?.takeIf { it.isNotBlank() } ?: parsedName ?: fileName.substringBeforeLast('.')
             val sanitizedCategory = sanitizeCustomLutCategory(category)
 
             // 保存到配置文件

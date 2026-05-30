@@ -32,6 +32,79 @@ object XmpLutParser {
         }
     }
 
+    fun parseName(inputStream: InputStream): String? {
+        return try {
+            val factory = DocumentBuilderFactory.newInstance()
+            factory.isNamespaceAware = true
+            val builder = factory.newDocumentBuilder()
+            val doc = builder.parse(inputStream)
+
+            val crsNs = "http://ns.adobe.com/camera-raw-settings/1.0/"
+            val descriptions = doc.getElementsByTagNameNS("http://www.w3.org/1999/02/22-rdf-syntax-ns#", "Description")
+
+            var name: String? = null
+            for (i in 0 until descriptions.length) {
+                val desc = descriptions.item(i) as org.w3c.dom.Element
+
+                // 1. Try crs:Name attribute with namespace
+                if (desc.hasAttributeNS(crsNs, "Name")) {
+                    val value = desc.getAttributeNS(crsNs, "Name")
+                    if (value.isNotEmpty()) {
+                        name = value
+                        break
+                    }
+                }
+
+                // 2. Try Name attribute without namespace
+                if (desc.hasAttribute("Name")) {
+                    val value = desc.getAttribute("Name")
+                    if (value.isNotEmpty()) {
+                        name = value
+                        break
+                    }
+                }
+
+                // 3. Try crs:Name attribute directly
+                if (desc.hasAttribute("crs:Name")) {
+                    val value = desc.getAttribute("crs:Name")
+                    if (value.isNotEmpty()) {
+                        name = value
+                        break
+                    }
+                }
+
+                // 4. Try crs:LookName attribute as fallback
+                if (desc.hasAttributeNS(crsNs, "LookName")) {
+                    val value = desc.getAttributeNS(crsNs, "LookName")
+                    if (value.isNotEmpty()) {
+                        name = value
+                        break
+                    }
+                }
+            }
+
+            // 5. Try crs:Name element
+            if (name.isNullOrBlank()) {
+                val nameElements = doc.getElementsByTagNameNS(crsNs, "Name")
+                if (nameElements.length > 0) {
+                    name = nameElements.item(0).textContent?.trim()
+                }
+            }
+
+            if (name.isNullOrBlank()) {
+                val nameElements = doc.getElementsByTagName("crs:Name")
+                if (nameElements.length > 0) {
+                    name = nameElements.item(0).textContent?.trim()
+                }
+            }
+
+            name?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            PLog.e("XmpLutParser", "Failed to parse Name from XMP", e)
+            null
+        }
+    }
+
     fun parse(
         inputStream: InputStream,
         outputStream: OutputStream,

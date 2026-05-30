@@ -90,6 +90,7 @@ fun GalleryScreen(
     viewModel: GalleryViewModel,
     onBack: () -> Unit,
     onPhotoClick: (GalleryTab, Int) -> Unit,
+    onNavigateToEdit: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val photos by viewModel.currentPhotos.collectAsState()
@@ -158,7 +159,14 @@ fun GalleryScreen(
                 }
             }
             if (uris.isNotEmpty()) {
-                viewModel.importPhotos(uris, videoUris)
+                viewModel.importPhotos(uris, videoUris) { importedIds ->
+                    if (importedIds.size == 1) {
+                        val newPhotoId = importedIds.first()
+                        viewModel.setCurrentPhotoById(newPhotoId)
+                        viewModel.enterEditMode()
+                        onNavigateToEdit()
+                    }
+                }
             }
         }
     }
@@ -202,6 +210,7 @@ fun GalleryScreen(
 
     // 首次进入时先让导航过渡完成，再挂载重型网格，避免首屏动画和列表构建抢主线程。
     LaunchedEffect(Unit) {
+        viewModel.selectTab(GalleryTab.PHOTON)
         viewModel.loadCurrentTabData()
         delay(300L)
         shouldRenderGrid = true
@@ -240,49 +249,12 @@ fun GalleryScreen(
                             color = Color.White
                         )
                     } else {
-                        TabRow(
-                            selectedTabIndex = selectedTab.ordinal,
-                            containerColor = Color.Transparent,
-                            contentColor = Color.White,
-                            indicator = { tabPositions ->
-                                TabRowDefaults.SecondaryIndicator(
-                                    Modifier.tabIndicatorOffset(tabPositions[selectedTab.ordinal]),
-                                    color = AccentOrange
-                                )
-                            },
-                            divider = {}
-                        ) {
-                            Tab(
-                                selected = selectedTab == GalleryTab.PHOTON,
-                                onClick = {
-                                    scope.launch {
-                                        viewModel.selectTab(GalleryTab.PHOTON)
-                                    }
-                                },
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.gallery_photon),
-                                        fontSize = 14.sp,
-                                        fontWeight = if (selectedTab == GalleryTab.PHOTON) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            )
-                            Tab(
-                                selected = selectedTab == GalleryTab.SYSTEM,
-                                onClick = {
-                                    scope.launch {
-                                        viewModel.selectTab(GalleryTab.SYSTEM)
-                                    }
-                                },
-                                text = {
-                                    Text(
-                                        text = stringResource(R.string.gallery_system),
-                                        fontSize = 14.sp,
-                                        fontWeight = if (selectedTab == GalleryTab.SYSTEM) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                }
-                            )
-                        }
+                        Text(
+                            text = stringResource(R.string.gallery_photon),
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 },
                 navigationIcon = {

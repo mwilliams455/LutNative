@@ -577,6 +577,9 @@ fun NavigationHost(
                     },
                     onPhotoClick = { tab, index ->
                         navController.navigate(Routes.photoDetail(tab, index))
+                    },
+                    onNavigateToEdit = {
+                        navController.navigate(Routes.PHOTO_EDIT)
                     }
                 )
             }

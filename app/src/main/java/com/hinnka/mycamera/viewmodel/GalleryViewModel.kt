@@ -2626,29 +2626,30 @@ class GalleryViewModel(application: Application) : AndroidViewModel(application)
     /**
      * 批量导入照片
      */
-    fun importPhotos(uris: List<Uri>, videoUris: List<Uri?>? = null) {
+    fun importPhotos(uris: List<Uri>, videoUris: List<Uri?>? = null, onImportFinished: (List<String>) -> Unit = {}) {
         if (uris.isEmpty()) return
 
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val context = getApplication<Application>()
-                var successCount = 0
+                val importedIds = mutableListOf<String>()
 
                 withContext(Dispatchers.IO) {
                     uris.forEachIndexed { index, uri ->
                         val videoUri = videoUris?.getOrNull(index)
                         val photoId = GalleryManager.importPhoto(context, uri, null, null, videoUri = videoUri)
                         if (photoId != null) {
-                            successCount++
+                            importedIds.add(photoId)
                         }
                     }
                 }
 
-                if (successCount > 0) {
+                if (importedIds.isNotEmpty()) {
                     loadPhotos()
+                    onImportFinished(importedIds)
                 }
-                PLog.d(TAG, "Imported $successCount of ${uris.size} photos")
+                PLog.d(TAG, "Imported ${importedIds.size} of ${uris.size} photos")
             } catch (e: Exception) {
                 PLog.e(TAG, "Failed to import photos", e)
             } finally {

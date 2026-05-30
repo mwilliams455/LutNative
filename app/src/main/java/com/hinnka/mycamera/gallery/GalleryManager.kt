@@ -2055,26 +2055,38 @@ object GalleryManager {
             val noiseReductionValue = metadata.noiseReduction ?: 0f
             val chromaNoiseReductionValue = metadata.chromaNoiseReduction ?: 0f
 
-            image.use {
+            val saved = image.use {
                 YuvProcessor.processAndSave(
                     image, metadata.rotation, photoFile.absolutePath
                 )
             }
+            if (!saved || !photoFile.exists()) {
+                PLog.e(TAG, "YuvProcessor failed to process and save burst photo for $photoId")
+                return
+            }
             if (!mainPhotoFile.exists() || mainPhotoFile.length() == 0L) {
                 processingScope.launch {
-                    photoFile.copyTo(mainPhotoFile, overwrite = true)
-                    if (shouldAutoSave) {
-                        exportPhoto(
-                            context,
-                            photoId,
-                            null,
-                            photoProcessor,
-                            metadata,
-                            sharpeningValue,
-                            noiseReductionValue,
-                            chromaNoiseReductionValue,
-                            photoQuality
-                        )
+                    try {
+                        if (photoFile.exists()) {
+                            photoFile.copyTo(mainPhotoFile, overwrite = true)
+                            if (shouldAutoSave) {
+                                exportPhoto(
+                                    context,
+                                    photoId,
+                                    null,
+                                    photoProcessor,
+                                    metadata,
+                                    sharpeningValue,
+                                    noiseReductionValue,
+                                    chromaNoiseReductionValue,
+                                    photoQuality
+                                )
+                            }
+                        } else {
+                            PLog.e(TAG, "Burst photo file does not exist during copy: ${photoFile.absolutePath}")
+                        }
+                    } catch (e: Exception) {
+                        PLog.e(TAG, "Failed to copy burst photo asynchronously", e)
                     }
                 }
             }

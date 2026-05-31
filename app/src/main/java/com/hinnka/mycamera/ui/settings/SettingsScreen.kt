@@ -208,6 +208,7 @@ fun SettingsScreen(
     val useLivePhoto by viewModel.useLivePhoto.collectAsState()
     val enableDevelopAnimation by viewModel.enableDevelopAnimation.collectAsState()
     val photoQuality by viewModel.photoQuality.collectAsState(initial = 95)
+    val tonemapMode by viewModel.tonemapMode.collectAsState()
     val useGpuAcceleration by viewModel.useGpuAcceleration.collectAsState()
     val useP010 by viewModel.useP010.collectAsState()
     val useHlg10 by viewModel.useHlg10.collectAsState()
@@ -949,6 +950,28 @@ fun SettingsScreen(
                             description = stringResource(R.string.settings_baseline_jpg_description),
                             selectedLut = availableLuts.find { it.id == jpgBaselineLutId },
                             onClick = { baselinePickerTarget = BaselineColorCorrectionTarget.JPG }
+                        )
+
+                        HorizontalDivider(
+                            color = Color.White.copy(alpha = 0.1f),
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+
+                        QualityLevelSetting(
+                            title = stringResource(R.string.settings_tonemap_mode),
+                            description = stringResource(R.string.settings_tonemap_mode_description),
+                            levels = listOf(
+                                "FAST" to stringResource(R.string.settings_tonemap_mode_fast),
+                                "HIGH_QUALITY" to stringResource(R.string.settings_tonemap_mode_high_quality),
+                                "OFF" to stringResource(R.string.settings_tonemap_mode_off),
+                                "SRGB" to "sRGB",
+                                "REC709" to "Rec.709",
+                                "ACR3" to stringResource(R.string.settings_tonemap_mode_acr3),
+                                "SRGB_ACR3" to stringResource(R.string.settings_tonemap_mode_srgb_acr3),
+                                "REC709_ACR3" to stringResource(R.string.settings_tonemap_mode_rec709_acr3)
+                            ),
+                            currentLevel = tonemapMode,
+                            onLevelSelected = { viewModel.setTonemapMode(it) }
                         )
 
 

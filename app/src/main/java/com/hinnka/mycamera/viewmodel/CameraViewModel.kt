@@ -330,6 +330,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val droMode: StateFlow<String> = userPreferencesRepository.userPreferences
         .map { it.droMode }
         .stateIn(viewModelScope, SharingStarted.Eagerly, "OFF")
+    val tonemapMode: StateFlow<String> = userPreferencesRepository.userPreferences
+        .map { it.tonemapMode }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, "FAST")
     val applyUltraHDR: StateFlow<Boolean> = userPreferencesRepository.userPreferences
         .map { it.applyUltraHDR }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -543,6 +546,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 cameraController.setUseRaw(it.useRaw)
                 cameraController.setRawMinShutterSpeedNs(it.rawMinShutterSpeedNs)
                 cameraController.setDroMode(it.droMode)
+                cameraController.setTonemapMode(it.tonemapMode)
                 if (cameraController.state.value.meteringMode != it.meteringMode) {
                     cameraController.setMeteringMode(it.meteringMode)
                 }
@@ -682,6 +686,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 cameraController.setMultiFrameCount(prefs.multiFrameCount)
                 cameraController.setUseLivePhoto(prefs.useLivePhoto && prefs.captureMode == CaptureMode.PHOTO)
                 cameraController.setDroMode(prefs.droMode)
+                cameraController.setTonemapMode(prefs.tonemapMode)
 
                 // 应用保存的虚拟光圈
                 if (prefs.defaultVirtualAperture > 0f) {
@@ -3505,6 +3510,15 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             val resolvedMode = com.hinnka.mycamera.raw.RawProcessingPreferences.DROMode.fromPersistedName(mode)
             userPreferencesRepository.saveDroMode(resolvedMode.name)
             userPreferencesRepository.updateRawDROEnabled(resolvedMode.isEnabled)
+        }
+    }
+
+    /**
+     * 设置色调映射模式
+     */
+    fun setTonemapMode(mode: String) {
+        viewModelScope.launch {
+            userPreferencesRepository.saveTonemapMode(mode)
         }
     }
 

@@ -206,6 +206,11 @@
     <string name="settings_detail_enhancement_description">手動微調銳化和降噪參數</string>
     <string name="settings_photo_quality">相片品質</string>
     <string name="settings_photo_quality_description">選擇 JPEG 壓縮的相片品質（越高畫質越好，但檔案體積也越大）</string>
+    <string name="settings_tonemap_mode">色調映射</string>
+    <string name="settings_tonemap_mode_description">調整硬體色調映射（對比度/伽馬）模式</string>
+    <string name="settings_tonemap_mode_fast">快速</string>
+    <string name="settings_tonemap_mode_high_quality">高品質</string>
+    <string name="settings_tonemap_mode_off">停用</string>
 
     <!-- LUT -->
     <string name="filter_intensity">濾鏡強度</string>

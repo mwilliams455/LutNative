@@ -1674,20 +1674,194 @@ class Camera2Controller(private val context: Context) {
         builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, resolvedRange)
     }
 
-    private fun applyToneMapSettings(builder: CaptureRequest.Builder, state: CameraState, isCapture: Boolean) {
-        val preferredTonemapMode = when {
-            isCapture && state.captureMode == CaptureMode.PHOTO &&
-                    availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_HIGH_QUALITY) -> {
-                CaptureRequest.TONEMAP_MODE_HIGH_QUALITY
+    private fun generateSrgbCurve(): FloatArray {
+        val points = 64
+        val curve = FloatArray(points * 2)
+        for (i in 0 until points) {
+            val x = i.toFloat() / (points - 1)
+            val y = if (x <= 0.0031308f) {
+                12.92f * x
+            } else {
+                1.055f * Math.pow(x.toDouble(), 1.0 / 2.4).toFloat() - 0.055f
             }
-
-            availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_FAST) -> {
-                CaptureRequest.TONEMAP_MODE_FAST
-            }
-
-            else -> null
+            curve[i * 2] = x
+            curve[i * 2 + 1] = y.coerceIn(0f, 1f)
         }
-        preferredTonemapMode?.let { builder.set(CaptureRequest.TONEMAP_MODE, it) }
+        return curve
+    }
+
+    private fun generateRec709Curve(): FloatArray {
+        val points = 64
+        val curve = FloatArray(points * 2)
+        for (i in 0 until points) {
+            val x = i.toFloat() / (points - 1)
+            val y = if (x < 0.018f) {
+                4.5f * x
+            } else {
+                1.099f * Math.pow(x.toDouble(), 0.45).toFloat() - 0.099f
+            }
+            curve[i * 2] = x
+            curve[i * 2 + 1] = y.coerceIn(0f, 1f)
+        }
+        return curve
+    }
+
+    private fun generateLinearCurve(): FloatArray {
+        return floatArrayOf(0.0f, 0.0f, 1.0f, 1.0f)
+    }
+
+    private fun inverseSrgb(x: Float): Float {
+        return if (x <= 0.04045f) {
+            x / 12.92f
+        } else {
+            Math.pow(((x + 0.055) / 1.055), 2.4).toFloat()
+        }
+    }
+
+    private fun getAcr3LinearValue(x: Float): Float {
+        val samples = com.hinnka.mycamera.raw.ACR3Curve.samples()
+        val length = samples.size
+        if (length == 0) return x
+        val index = x * (length - 1)
+        val low = Math.floor(index.toDouble()).toInt().coerceIn(0, length - 1)
+        val high = Math.ceil(index.toDouble()).toInt().coerceIn(0, length - 1)
+        if (low == high) return samples[low]
+        val weight = index - low
+        return samples[low] * (1f - weight) + samples[high] * weight
+    }
+
+    private fun generateAcr3Curve(): FloatArray {
+        val points = 64
+        val curve = FloatArray(points * 2)
+        for (i in 0 until points) {
+            val x = i.toFloat() / (points - 1)
+            // ACR3 expects linear domain input, but when only choosing ACR3, the input is sRGB-encoded.
+            // So we linearize the input first.
+            val linearInput = inverseSrgb(x)
+            // Apply ACR3 in the linear domain
+            val linearOutput = getAcr3LinearValue(linearInput)
+            // Convert the linear output back to sRGB domain for the display output
+            val y = if (linearOutput <= 0.0031308f) {
+                12.92f * linearOutput
+            } else {
+                1.055f * Math.pow(linearOutput.toDouble(), 1.0 / 2.4).toFloat() - 0.055f
+            }
+            curve[i * 2] = x
+            curve[i * 2 + 1] = y.coerceIn(0f, 1f)
+        }
+        return curve
+    }
+
+    private fun generateSrgbAcr3Curve(): FloatArray {
+        val points = 64
+        val curve = FloatArray(points * 2)
+        for (i in 0 until points) {
+            val x = i.toFloat() / (points - 1)
+            val linearVal = getAcr3LinearValue(x)
+            val y = if (linearVal <= 0.0031308f) {
+                12.92f * linearVal
+            } else {
+                1.055f * Math.pow(linearVal.toDouble(), 1.0 / 2.4).toFloat() - 0.055f
+            }
+            curve[i * 2] = x
+            curve[i * 2 + 1] = y.coerceIn(0f, 1f)
+        }
+        return curve
+    }
+
+    private fun generateRec709Acr3Curve(): FloatArray {
+        val points = 64
+        val curve = FloatArray(points * 2)
+        for (i in 0 until points) {
+            val x = i.toFloat() / (points - 1)
+            val linearVal = getAcr3LinearValue(x)
+            val y = if (linearVal < 0.018f) {
+                4.5f * linearVal
+            } else {
+                1.099f * Math.pow(linearVal.toDouble(), 0.45).toFloat() - 0.099f
+            }
+            curve[i * 2] = x
+            curve[i * 2 + 1] = y.coerceIn(0f, 1f)
+        }
+        return curve
+    }
+
+    private fun applyToneMapSettings(builder: CaptureRequest.Builder, state: CameraState, isCapture: Boolean) {
+        when (state.tonemapMode) {
+            "FAST" -> {
+                if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_FAST)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST)
+                }
+            }
+            "HIGH_QUALITY" -> {
+                if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_HIGH_QUALITY)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_HIGH_QUALITY)
+                } else if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_FAST)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST)
+                }
+            }
+            "OFF" -> {
+                if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)
+                    val linearCurve = generateLinearCurve()
+                    val curve = TonemapCurve(linearCurve, linearCurve, linearCurve)
+                    builder.set(CaptureRequest.TONEMAP_CURVE, curve)
+                }
+            }
+            "SRGB" -> {
+                if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)
+                    val srgbCurve = generateSrgbCurve()
+                    val curve = TonemapCurve(srgbCurve, srgbCurve, srgbCurve)
+                    builder.set(CaptureRequest.TONEMAP_CURVE, curve)
+                }
+            }
+            "REC709" -> {
+                if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)
+                    val rec709Curve = generateRec709Curve()
+                    val curve = TonemapCurve(rec709Curve, rec709Curve, rec709Curve)
+                    builder.set(CaptureRequest.TONEMAP_CURVE, curve)
+                }
+            }
+            "ACR3" -> {
+                if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)
+                    val acr3Curve = generateAcr3Curve()
+                    val curve = TonemapCurve(acr3Curve, acr3Curve, acr3Curve)
+                    builder.set(CaptureRequest.TONEMAP_CURVE, curve)
+                }
+            }
+            "SRGB_ACR3" -> {
+                if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)
+                    val srgbAcr3Curve = generateSrgbAcr3Curve()
+                    val curve = TonemapCurve(srgbAcr3Curve, srgbAcr3Curve, srgbAcr3Curve)
+                    builder.set(CaptureRequest.TONEMAP_CURVE, curve)
+                }
+            }
+            "REC709_ACR3" -> {
+                if (availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)) {
+                    builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)
+                    val rec709Acr3Curve = generateRec709Acr3Curve()
+                    val curve = TonemapCurve(rec709Acr3Curve, rec709Acr3Curve, rec709Acr3Curve)
+                    builder.set(CaptureRequest.TONEMAP_CURVE, curve)
+                }
+            }
+            else -> {
+                val preferredTonemapMode = when {
+                    isCapture && state.captureMode == CaptureMode.PHOTO &&
+                            availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_HIGH_QUALITY) -> {
+                        CaptureRequest.TONEMAP_MODE_HIGH_QUALITY
+                    }
+                    availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_FAST) -> {
+                        CaptureRequest.TONEMAP_MODE_FAST
+                    }
+                    else -> null
+                }
+                preferredTonemapMode?.let { builder.set(CaptureRequest.TONEMAP_MODE, it) }
+            }
+        }
     }
 
     /**
@@ -2047,6 +2221,14 @@ class Camera2Controller(private val context: Context) {
         val resolvedMode = DROMode.fromPersistedName(mode).name
         _state.value = _state.value.copy(droMode = resolvedMode)
         PLog.d(TAG, "RAW DRO mode: $resolvedMode")
+    }
+
+    /**
+     * 设置色调映射模式
+     */
+    fun setTonemapMode(mode: String) {
+        _state.value = _state.value.copy(tonemapMode = mode)
+        PLog.d(TAG, "色调映射模式: $mode")
     }
 
     /**

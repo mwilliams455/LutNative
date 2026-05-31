@@ -121,6 +121,7 @@ data class UserPreferences(
     val backgroundImage: String = "camera_bg", // 背景图资源名或文件路径
     val useGpuAcceleration: Boolean = DeviceUtil.defaultGpuAcceleration, // 多帧合成是否使用 GPU 加速
     val droMode: String = "OFF", // DRO 模式
+    val tonemapMode: String = "FAST", // 色调映射模式
     val applyUltraHDR: Boolean = false, // 是否应用 Ultra HDR 策略
     val colorSpace: ColorSpace = ColorSpace.SRGB,
     val logCurve: TransferCurve = TransferCurve.SRGB,
@@ -237,6 +238,7 @@ class UserPreferencesRepository(private val context: Context) {
         private val BACKGROUND_IMAGE = stringPreferencesKey("background_image")
         private val USE_GPU_ACCELERATION = booleanPreferencesKey("use_gpu_acceleration")
         private val DRO_MODE = stringPreferencesKey("dro_mode")
+        private val TONEMAP_MODE = stringPreferencesKey("tonemap_mode")
         private val APPLY_ULTRA_HDR = booleanPreferencesKey("apply_ultra_hdr")
         private val COLOR_SPACE = stringPreferencesKey("color_space")
         private val LOG_CURVE = stringPreferencesKey("log_curve")
@@ -362,6 +364,7 @@ class UserPreferencesRepository(private val context: Context) {
                 backgroundImage = preferences[BACKGROUND_IMAGE] ?: "camera_bg",
                 useGpuAcceleration = preferences[USE_GPU_ACCELERATION] ?: DeviceUtil.defaultGpuAcceleration,
                 droMode = preferences[DRO_MODE] ?: if (preferences[RAW_DRO_ENABLED_KEY] == true) "DR100" else "OFF",
+                tonemapMode = preferences[TONEMAP_MODE] ?: "FAST",
                 applyUltraHDR = preferences[APPLY_ULTRA_HDR] ?: false,
                 colorSpace = ColorSpace.valueOf(preferences[COLOR_SPACE] ?: ColorSpace.SRGB.name),
                 logCurve = TransferCurve.fromPersistedName(preferences[LOG_CURVE] ?: TransferCurve.SRGB.name),
@@ -1094,6 +1097,15 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun saveDroMode(mode: String) {
         context.dataStore.edit { preferences ->
             preferences[DRO_MODE] = mode
+        }
+    }
+
+    /**
+     * 保存色调映射模式
+     */
+    suspend fun saveTonemapMode(mode: String) {
+        context.dataStore.edit { preferences ->
+            preferences[TONEMAP_MODE] = mode
         }
     }
 

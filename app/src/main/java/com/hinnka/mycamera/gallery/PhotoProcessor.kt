@@ -51,7 +51,7 @@ class PhotoProcessor(
     private suspend fun shouldDecodeHlgInput(metadata: MediaMetadata): Boolean {
         val isHlg = metadata.dynamicRangeProfile == "HLG10"
         if (!isHlg) return false
-        return userPreferencesRepository.userPreferences.firstOrNull()?.hlgHardwareCompatibilityEnabled ?: true
+        return userPreferencesRepository.userPreferences.firstOrNull()?.hlgHardwareCompatibilityEnabled ?: false
     }
 
     private suspend fun resolveRawAutoWhiteBalanceEstimate(metadata: MediaMetadata): Boolean {

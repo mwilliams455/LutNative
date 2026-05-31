@@ -366,7 +366,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val hlgHardwareCompatibilityEnabled: StateFlow<Boolean> = userPreferencesRepository.userPreferences
         .map { it.hlgHardwareCompatibilityEnabled }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
     val useP3ColorSpace: StateFlow<Boolean> = userPreferencesRepository.userPreferences
         .map { it.useP3ColorSpace }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
@@ -571,8 +571,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 // 同步 P010 设置到相机控制器
                 cameraController.setUseP010(it.useP010)
                 // 同步 HLG10 设置到相机控制器
-//                cameraController.setUseHlg10(it.useHlg10)
-                cameraController.setUseHlg10(false)
+                cameraController.setUseHlg10(it.useHlg10)
                 // 同步 P3 色域设置到相机控制器
                 cameraController.setUseP3ColorSpace(it.useP3ColorSpace)
             }

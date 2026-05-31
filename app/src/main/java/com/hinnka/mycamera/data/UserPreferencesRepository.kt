@@ -128,7 +128,7 @@ data class UserPreferences(
     val rawLuts: Map<String, String> = mapOf(TransferCurve.SRGB.name to RawProfile.STANDARD_SRGB.rawLut),
     val useP010: Boolean = false,
     val useHlg10: Boolean = false,
-    val hlgHardwareCompatibilityEnabled: Boolean = true,
+    val hlgHardwareCompatibilityEnabled: Boolean = false,
     val useP3ColorSpace: Boolean = false,
     val videoResolution: VideoResolutionPreset = VideoResolutionPreset.FHD_1080P,
     val videoFps: VideoFpsPreset = VideoFpsPreset.FPS_30,
@@ -371,7 +371,7 @@ class UserPreferencesRepository(private val context: Context) {
                 rawLuts = parseRawLuts(preferences),
                 useP010 = preferences[USE_P010] ?: false,
                 useHlg10 = preferences[USE_HLG10] ?: false,
-                hlgHardwareCompatibilityEnabled = preferences[HLG_HARDWARE_COMPATIBILITY_ENABLED] ?: true,
+                hlgHardwareCompatibilityEnabled = preferences[HLG_HARDWARE_COMPATIBILITY_ENABLED] ?: false,
                 useP3ColorSpace = preferences[USE_P3_COLOR_SPACE] ?: false,
                 videoResolution = VideoResolutionPreset.valueOf(
                     preferences[VIDEO_RESOLUTION] ?: VideoResolutionPreset.FHD_1080P.name

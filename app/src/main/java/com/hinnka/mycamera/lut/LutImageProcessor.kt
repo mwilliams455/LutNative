@@ -2441,7 +2441,6 @@ class LutImageProcessor {
 
                 if (uIsHlgInput) {
                     color.rgb = hlgToLinear(color.rgb);
-                    color.rgb = bt2020ToLinearSrgb(color.rgb);
                     color.rgb = linearToSrgb(color.rgb);
                 }
 

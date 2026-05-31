@@ -482,8 +482,8 @@
     <string name="settings_use_p010_description">啟用 10 位 YUV 輸出以獲得更好的影像資料精度。僅在支援的裝置上且 RAW 關閉時生效。</string>
     <string name="settings_use_hlg10">HLG10 HDR</string>
     <string name="settings_use_hlg10_description">在支援的裝置上啟用 HLG10 動態範圍拍攝。需同時開啟 P010 且關閉 RAW。</string>
-    <string name="settings_hlg_hardware_compatibility">HLG 輸入解碼</string>
-    <string name="settings_hlg_hardware_compatibility_description">在 Log 影片和 Log LUT 處理中手動解碼輸入的 HLG 資料；關閉時，則視為系統已自動完成 HLG 解碼，不再額外干預。</string>
+    <string name="settings_hlg_hardware_compatibility">HLG 兼容性解碼</string>
+    <string name="settings_hlg_hardware_compatibility_description">部分裝置開啟 HLG 拍攝後畫面可能偏暗或異常。若遇到畫面異常，請開啟此選項進行手動解碼；畫面正常請關閉。</string>
     <string name="refresh">重新整理</string>
     <string name="refresh_success">預覽已重新整理</string>
     <string name="settings_background">背景設定</string>

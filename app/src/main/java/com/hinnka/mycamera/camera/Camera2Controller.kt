@@ -1239,7 +1239,7 @@ class Camera2Controller(private val context: Context) {
 
 
             // Android 9+ 使用 SessionConfiguration
-            val useHlgCapture = _state.value.useHlg10 && !forceStandardSession
+            val useHlgCapture = _state.value.useHlg10 && !_state.value.useRaw && !forceStandardSession
             val readerFormat = reader?.imageFormat ?: ImageFormat.YUV_420_888
             PLog.i(
                 TAG,

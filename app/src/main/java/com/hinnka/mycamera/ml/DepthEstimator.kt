@@ -37,6 +37,13 @@ class DepthEstimator(
             val modelFile = StartupTrace.measure("DepthEstimator.loadMappedFile.$modelAssetName") {
                 FileUtil.loadMappedFile(context, modelAssetName)
             }
+            val delegateCache = MlDelegateCacheFactory.create(
+                context = context,
+                tag = TAG,
+                cacheName = "depth_estimator",
+                modelAssetName = modelAssetName,
+                modelSizeBytes = modelFile.capacity()
+            )
 
             if (modelAssetName != MODEL_DEPTH_ANYTHING) {
                 // Try GPU. Depth Anything V2 is skipped here because the TFLite
@@ -49,9 +56,22 @@ class DepthEstimator(
                 gpuDelegate = StartupTrace.measure("DepthEstimator.GpuDelegate()") {
                     if (compatList.isDelegateSupportedOnThisDevice) {
                         val delegateOptions = compatList.bestOptionsForThisDevice
+                        delegateCache?.let {
+                            delegateOptions.setSerializationParams(
+                                it.directory.absolutePath,
+                                it.modelToken
+                            )
+                        }
                         GpuDelegate(delegateOptions)
                     } else {
-                        GpuDelegate()
+                        val delegateOptions = GpuDelegate.Options()
+                        delegateCache?.let {
+                            delegateOptions.setSerializationParams(
+                                it.directory.absolutePath,
+                                it.modelToken
+                            )
+                        }
+                        GpuDelegate(delegateOptions)
                     }
                 }
                 StartupTrace.measure("DepthEstimator.gpuOptions.addDelegate") {
@@ -76,7 +96,13 @@ class DepthEstimator(
             if (!isInitialized) {
                 val nnApiOptions = Interpreter.Options()
                 nnApiDelegate = StartupTrace.measure("DepthEstimator.NnApiDelegate()") {
-                    NnApiDelegate()
+                    val delegateOptions = NnApiDelegate.Options()
+                    delegateCache?.let {
+                        delegateOptions
+                            .setCacheDir(it.directory.absolutePath)
+                            .setModelToken(it.modelToken)
+                    }
+                    NnApiDelegate(delegateOptions)
                 }
                 StartupTrace.measure("DepthEstimator.nnApiOptions.addDelegate") {
                     nnApiOptions.addDelegate(nnApiDelegate)

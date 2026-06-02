@@ -67,6 +67,7 @@ import com.hinnka.mycamera.camera.AspectRatio
 import com.hinnka.mycamera.gallery.GalleryManager
 import com.hinnka.mycamera.lut.creator.LutCreatorScreen
 import com.hinnka.mycamera.lut.creator.LutCreatorViewModel
+import com.hinnka.mycamera.ml.StartupMlPreloader
 import com.hinnka.mycamera.screencapture.ScreenCaptureRenderConfigStore
 import com.hinnka.mycamera.ui.camera.CameraScreen
 import com.hinnka.mycamera.data.FilmData
@@ -146,6 +147,7 @@ class MainActivity : ComponentActivity() {
         arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
 
     private var hasPermissions by mutableStateOf(false)
+    private var mlPreloadComplete by mutableStateOf(false)
     private var pendingRoute by mutableStateOf<String?>(null)
     private var pendingZipImportUris by mutableStateOf<List<Uri>>(emptyList())
 
@@ -219,10 +221,22 @@ class MainActivity : ComponentActivity() {
             FilmData.init(this@MainActivity)
         }
 
+        lifecycleScope.launch {
+            try {
+                StartupMlPreloader.preloadForStartup(
+                    context = this@MainActivity,
+                    preferences = cameraViewModel.userPreferences.value
+                )
+            } finally {
+                mlPreloadComplete = true
+                StartupTrace.mark("MainActivity.mlPreloadComplete")
+            }
+        }
+
         splashScreen.setKeepOnScreenCondition {
             val cameraInitialized = cameraViewModel.isInitialized.value
             val galleryInitialized = galleryViewModel.isInitialized.value
-            !(cameraInitialized && galleryInitialized)
+            !(cameraInitialized && galleryInitialized && mlPreloadComplete)
         }
 
 

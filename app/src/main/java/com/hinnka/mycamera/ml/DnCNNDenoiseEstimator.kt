@@ -48,6 +48,13 @@ class DnCNNDenoiseEstimator(
             val modelFile = StartupTrace.measure("DnCNNDenoiseEstimator.loadMappedFile") {
                 FileUtil.loadMappedFile(context, modelAssetName)
             }
+            val delegateCache = MlDelegateCacheFactory.create(
+                context = context,
+                tag = TAG,
+                cacheName = "dncnn_denoise",
+                modelAssetName = modelAssetName,
+                modelSizeBytes = modelFile.capacity()
+            )
 
             if (backend == Backend.AUTO || backend == Backend.GPU) {
                 val gpuOptions = Interpreter.Options()
@@ -57,9 +64,22 @@ class DnCNNDenoiseEstimator(
                 gpuDelegate = StartupTrace.measure("DnCNNDenoiseEstimator.GpuDelegate()") {
                     if (compatList.isDelegateSupportedOnThisDevice) {
                         val delegateOptions = compatList.bestOptionsForThisDevice
+                        delegateCache?.let {
+                            delegateOptions.setSerializationParams(
+                                it.directory.absolutePath,
+                                it.modelToken
+                            )
+                        }
                         GpuDelegate(delegateOptions)
                     } else {
-                        GpuDelegate()
+                        val delegateOptions = GpuDelegate.Options()
+                        delegateCache?.let {
+                            delegateOptions.setSerializationParams(
+                                it.directory.absolutePath,
+                                it.modelToken
+                            )
+                        }
+                        GpuDelegate(delegateOptions)
                     }
                 }
                 StartupTrace.measure("DnCNNDenoiseEstimator.gpuOptions.addDelegate") {
@@ -82,7 +102,13 @@ class DnCNNDenoiseEstimator(
             if (backend == Backend.AUTO && !isInitialized) {
                 val nnApiOptions = Interpreter.Options()
                 nnApiDelegate = StartupTrace.measure("DnCNNDenoiseEstimator.NnApiDelegate()") {
-                    NnApiDelegate()
+                    val delegateOptions = NnApiDelegate.Options()
+                    delegateCache?.let {
+                        delegateOptions
+                            .setCacheDir(it.directory.absolutePath)
+                            .setModelToken(it.modelToken)
+                    }
+                    NnApiDelegate(delegateOptions)
                 }
                 StartupTrace.measure("DnCNNDenoiseEstimator.nnApiOptions.addDelegate") {
                     nnApiOptions.addDelegate(nnApiDelegate)

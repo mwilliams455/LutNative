@@ -70,6 +70,13 @@ class YoloXObjectDetector(context: Context) {
             val modelFile = StartupTrace.measure("YoloXObjectDetector.loadMappedFile") {
                 FileUtil.loadMappedFile(context, MODEL_ASSET)
             }
+            val delegateCache = MlDelegateCacheFactory.create(
+                context = context,
+                tag = TAG,
+                cacheName = "yolox_object",
+                modelAssetName = MODEL_ASSET,
+                modelSizeBytes = modelFile.capacity()
+            )
 
             val compatList = StartupTrace.measure("YoloXObjectDetector.CompatibilityList") {
                 CompatibilityList()
@@ -79,9 +86,23 @@ class YoloXObjectDetector(context: Context) {
                 val gpuOptions = Interpreter.Options()
                 gpuDelegate = StartupTrace.measure("YoloXObjectDetector.GpuDelegate") {
                     if (compatList.isDelegateSupportedOnThisDevice) {
-                        GpuDelegate(compatList.bestOptionsForThisDevice)
+                        val delegateOptions = compatList.bestOptionsForThisDevice
+                        delegateCache?.let {
+                            delegateOptions.setSerializationParams(
+                                it.directory.absolutePath,
+                                it.modelToken
+                            )
+                        }
+                        GpuDelegate(delegateOptions)
                     } else {
-                        GpuDelegate()
+                        val delegateOptions = GpuDelegate.Options()
+                        delegateCache?.let {
+                            delegateOptions.setSerializationParams(
+                                it.directory.absolutePath,
+                                it.modelToken
+                            )
+                        }
+                        GpuDelegate(delegateOptions)
                     }
                 }
                 gpuOptions.addDelegate(gpuDelegate)
@@ -101,7 +122,13 @@ class YoloXObjectDetector(context: Context) {
                     setNumThreads(2)
                 }
                 nnApiDelegate = StartupTrace.measure("YoloXObjectDetector.NnApiDelegate") {
-                    NnApiDelegate()
+                    val delegateOptions = NnApiDelegate.Options()
+                    delegateCache?.let {
+                        delegateOptions
+                            .setCacheDir(it.directory.absolutePath)
+                            .setModelToken(it.modelToken)
+                    }
+                    NnApiDelegate(delegateOptions)
                 }
                 nnApiOptions.addDelegate(nnApiDelegate)
                 try {

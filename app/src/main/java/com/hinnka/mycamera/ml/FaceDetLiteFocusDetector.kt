@@ -39,10 +39,17 @@ class FaceDetLiteFocusDetector(context: Context) {
             val modelFile = StartupTrace.measure("FaceDetLiteFocusDetector.loadModel") {
                 FileUtil.loadMappedFile(context, MODEL_ASSET)
             }
+            val delegateCache = MlDelegateCacheFactory.create(
+                context = context,
+                tag = TAG,
+                cacheName = "face_det_lite_focus",
+                modelAssetName = MODEL_ASSET,
+                modelSizeBytes = modelFile.capacity()
+            )
             val compatList = StartupTrace.measure("FaceDetLiteFocusDetector.CompatibilityList") {
                 CompatibilityList()
             }
-            state = createInterpreterState(modelFile, compatList)
+            state = createInterpreterState(modelFile, compatList, delegateCache)
             isInitialized = true
         } catch (e: Exception) {
             PLog.e(TAG, "Failed to initialize FaceDetLite focus detector", e)
@@ -171,15 +178,30 @@ class FaceDetLiteFocusDetector(context: Context) {
     private fun createInterpreterState(
         modelFile: MappedByteBuffer,
         compatList: CompatibilityList,
+        delegateCache: MlDelegateCache?,
     ): InterpreterState {
         var gpuDelegate: GpuDelegate? = null
         try {
             val options = Interpreter.Options()
             gpuDelegate = StartupTrace.measure("FaceDetLiteFocusDetector.GpuDelegate") {
                 if (compatList.isDelegateSupportedOnThisDevice) {
-                    GpuDelegate(compatList.bestOptionsForThisDevice)
+                    val delegateOptions = compatList.bestOptionsForThisDevice
+                    delegateCache?.let {
+                        delegateOptions.setSerializationParams(
+                            it.directory.absolutePath,
+                            it.modelToken
+                        )
+                    }
+                    GpuDelegate(delegateOptions)
                 } else {
-                    GpuDelegate()
+                    val delegateOptions = GpuDelegate.Options()
+                    delegateCache?.let {
+                        delegateOptions.setSerializationParams(
+                            it.directory.absolutePath,
+                            it.modelToken
+                        )
+                    }
+                    GpuDelegate(delegateOptions)
                 }
             }
             options.addDelegate(gpuDelegate)
@@ -197,7 +219,13 @@ class FaceDetLiteFocusDetector(context: Context) {
         try {
             val options = Interpreter.Options().apply { setNumThreads(2) }
             nnApiDelegate = StartupTrace.measure("FaceDetLiteFocusDetector.NnApiDelegate") {
-                NnApiDelegate()
+                val delegateOptions = NnApiDelegate.Options()
+                delegateCache?.let {
+                    delegateOptions
+                        .setCacheDir(it.directory.absolutePath)
+                        .setModelToken(it.modelToken)
+                }
+                NnApiDelegate(delegateOptions)
             }
             options.addDelegate(nnApiDelegate)
             val interpreter = StartupTrace.measure("FaceDetLiteFocusDetector.Interpreter.NNAPI") {

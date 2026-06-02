@@ -44,6 +44,7 @@ import com.hinnka.mycamera.raw.DcpInfo
 import com.hinnka.mycamera.raw.RawDemosaicProcessor
 import com.hinnka.mycamera.color.TransferCurve
 import com.hinnka.mycamera.raw.RawProfile
+import com.hinnka.mycamera.raw.SpectralFilmProfile
 import com.hinnka.mycamera.screencapture.PhantomPipCrop
 import com.hinnka.mycamera.ui.camera.CameraGLSurfaceView
 import com.hinnka.mycamera.utils.*
@@ -90,6 +91,12 @@ private fun resolvePreviewBaselineTarget(useRaw: Boolean): BaselineColorCorrecti
 private fun UserPreferences.getBaselineLutId(target: BaselineColorCorrectionTarget): String? {
     return getBaselineColorCorrectionConfig(target).lutId
 }
+
+private data class RawSpectralFilmSettings(
+    val enabled: Boolean,
+    val stock: String?,
+    val print: String?
+)
 
 /**
  * 相机 ViewModel
@@ -158,6 +165,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     @OptIn(ExperimentalCoroutinesApi::class)
     val currentBaselineRecipeParams: StateFlow<ColorRecipeParams> =
         userPreferencesRepository.userPreferences.flatMapLatest { prefs ->
+            if (shouldUseSpectralFilmPreview(prefs)) {
+                return@flatMapLatest flowOf(ColorRecipeParams.DEFAULT)
+            }
             val target = resolvePreviewBaselineTarget(prefs.useRaw)
             val lutId = target?.let { prefs.getBaselineLutId(it) }
             if (target == null || lutId == null) {
@@ -643,10 +653,8 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             userPreferencesRepository.userPreferences.collectLatest { prefs ->
-                val baselineLutId = resolvePreviewBaselineTarget(prefs.useRaw)
-                    ?.let { prefs.getBaselineLutId(it) }
                 currentBaselineLutConfig = withContext(Dispatchers.IO) {
-                    baselineLutId?.let { contentRepository.lutManager.loadLut(it) }
+                    resolvePreviewBaselineLut(prefs)
                 }
             }
         }
@@ -1000,9 +1008,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             userPrefs = userPrefs,
         )
 
-        val spectralFilmEnabled = userPrefs?.rawSpectralFilmEnabled ?: false
-        val spectralFilmStock = userPrefs?.rawSpectralFilmStock ?: "kodak_portra_400"
-        val spectralFilmPrint = userPrefs?.rawSpectralFilmPrint ?: "kodak_portra_endura"
+        val spectralFilmSettings = resolveRawSpectralFilmSettings(userPrefs)
 
         return MediaMetadata(
             lutId = lutIdToSave,
@@ -1024,9 +1030,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             rawBlackLevelMode = userPrefs?.rawBlackLevelModes?.get(currentCameraId) ?: "Default",
             rawCustomBlackLevel = userPrefs?.rawCustomBlackLevels?.get(currentCameraId) ?: 0f,
             cameraId = currentCameraId,
-            spectralFilmEnabled = spectralFilmEnabled,
-            spectralFilmStock = spectralFilmStock,
-            spectralFilmPrint = spectralFilmPrint,
+            spectralFilmEnabled = spectralFilmSettings.enabled,
+            spectralFilmStock = spectralFilmSettings.stock,
+            spectralFilmPrint = spectralFilmSettings.print,
             width = width,
             height = height,
             ratio = aspectRatio,
@@ -1053,6 +1059,43 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             captureMode = captureMode,
             multipleExposureFrameCount = multipleExposureFrameCount
         )
+    }
+
+    private fun resolveRawSpectralFilmSettings(
+        userPrefs: UserPreferences?
+    ): RawSpectralFilmSettings {
+        return RawSpectralFilmSettings(
+            enabled = userPrefs?.rawSpectralFilmEnabled ?: false,
+            stock = userPrefs?.rawSpectralFilmStock ?: "kodak_portra_400",
+            print = userPrefs?.rawSpectralFilmPrint ?: "kodak_portra_endura"
+        )
+    }
+
+    private fun shouldUseSpectralFilmPreview(userPrefs: UserPreferences): Boolean {
+        return userPrefs.useRaw && userPrefs.rawSpectralFilmEnabled
+    }
+
+    private fun resolvePreviewBaselineLut(userPrefs: UserPreferences): LutConfig? {
+        if (shouldUseSpectralFilmPreview(userPrefs)) {
+            val settings = resolveRawSpectralFilmSettings(userPrefs)
+            val stock = settings.stock ?: return null
+            val print = settings.print ?: return null
+            return SpectralFilmProfile.loadPreviewLutConfig(
+                getApplication<Application>(),
+                stock,
+                print
+            ).also { config ->
+                if (config == null) {
+                    PLog.w(TAG, "Failed to load spectral film preview LUT: stock=$stock, print=$print")
+                } else {
+                    PLog.d(TAG, "Loaded spectral film preview LUT: stock=$stock, print=$print")
+                }
+            }
+        }
+
+        val baselineLutId = resolvePreviewBaselineTarget(userPrefs.useRaw)
+            ?.let { userPrefs.getBaselineLutId(it) }
+        return baselineLutId?.let { contentRepository.lutManager.loadLut(it) }
     }
 
     private suspend fun resolveBaselineMetadata(
@@ -2949,6 +2992,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 BaselineColorCorrectionTarget.JPG
             }
             val baselineMetadata = resolveBaselineMetadata(baselineTarget, userPrefs)
+            val spectralFilmSettings = resolveRawSpectralFilmSettings(userPrefs)
 
             // 创建统一的 PhotoMetadata，包含编辑配置和拍摄信息
             val metadata = MediaMetadata(
@@ -2971,6 +3015,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 rawBlackLevelMode = userPrefs?.rawBlackLevelModes?.get(currentCameraId) ?: "Default",
                 rawCustomBlackLevel = userPrefs?.rawCustomBlackLevels?.get(currentCameraId) ?: 0f,
                 cameraId = currentCameraId,
+                spectralFilmEnabled = spectralFilmSettings.enabled,
+                spectralFilmStock = spectralFilmSettings.stock,
+                spectralFilmPrint = spectralFilmSettings.print,
                 width = image.width,
                 height = image.height,
                 ratio = aspectRatio,
@@ -3072,6 +3119,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                     (userPrefs?.mirrorFrontCamera ?: true)
             val baselineMetadata = resolveBaselineMetadata(BaselineColorCorrectionTarget.JPG, userPrefs)
             val currentCameraId = cameraController.getCurrentCameraId()
+            val spectralFilmSettings = resolveRawSpectralFilmSettings(userPrefs)
 
             val metadata = MediaMetadata(
                 lutId = currentLutId.value,
@@ -3093,6 +3141,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 rawBlackLevelMode = userPrefs?.rawBlackLevelModes?.get(currentCameraId) ?: "Default",
                 rawCustomBlackLevel = userPrefs?.rawCustomBlackLevels?.get(currentCameraId) ?: 0f,
                 cameraId = currentCameraId,
+                spectralFilmEnabled = spectralFilmSettings.enabled,
+                spectralFilmStock = spectralFilmSettings.stock,
+                spectralFilmPrint = spectralFilmSettings.print,
                 width = bitmap.width,
                 height = bitmap.height,
                 ratio = mapVideoAspectRatioToPhotoAspectRatio(currentState.videoConfig.aspectRatio),
@@ -3208,6 +3259,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 BaselineColorCorrectionTarget.JPG
             }
             val baselineMetadata = resolveBaselineMetadata(baselineTarget, userPrefs)
+            val spectralFilmSettings = resolveRawSpectralFilmSettings(userPrefs)
 
             // 创建统一的 PhotoMetadata，包含编辑配置和拍摄信息
             val metadata = MediaMetadata(
@@ -3230,6 +3282,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 rawBlackLevelMode = userPrefs?.rawBlackLevelModes?.get(currentCameraId) ?: "Default",
                 rawCustomBlackLevel = userPrefs?.rawCustomBlackLevels?.get(currentCameraId) ?: 0f,
                 cameraId = currentCameraId,
+                spectralFilmEnabled = spectralFilmSettings.enabled,
+                spectralFilmStock = spectralFilmSettings.stock,
+                spectralFilmPrint = spectralFilmSettings.print,
                 width = (images[0].width.toFloat() * superResScale).roundToInt(),
                 height = (images[0].height.toFloat() * superResScale).roundToInt(),
                 ratio = aspectRatio,
@@ -3357,6 +3412,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             BaselineColorCorrectionTarget.JPG
         }
         val baselineMetadata = resolveBaselineMetadata(baselineTarget, userPrefs)
+        val spectralFilmSettings = resolveRawSpectralFilmSettings(userPrefs)
 
         // 创建统一的 PhotoMetadata，包含编辑配置和拍摄信息
         val metadata = MediaMetadata(
@@ -3379,6 +3435,9 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             rawBlackLevelMode = userPrefs?.rawBlackLevelModes?.get(currentCameraId) ?: "Default",
             rawCustomBlackLevel = userPrefs?.rawCustomBlackLevels?.get(currentCameraId) ?: 0f,
             cameraId = currentCameraId,
+            spectralFilmEnabled = spectralFilmSettings.enabled,
+            spectralFilmStock = spectralFilmSettings.stock,
+            spectralFilmPrint = spectralFilmSettings.print,
             width = image.width,
             height = image.height,
             ratio = aspectRatio,

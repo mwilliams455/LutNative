@@ -1,11 +1,13 @@
 package com.hinnka.mycamera.raw
 
 import android.content.Context
+import com.hinnka.mycamera.lut.LutConfig
 import com.hinnka.mycamera.utils.PLog
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.pow
 
@@ -239,6 +241,7 @@ object SpectralPrintModelRegistry {
 object SpectralFilmProfile {
     private const val TAG = "SpectralFilmProfile"
     private const val LUT_SIZE = 17
+    private const val RAW_SPECTRAL_FILM_INPUT_SCALE = 2.88f
 
     private const val DEFAULT_FILM_ASSET = "spektrafilm/profiles/kodak_portra_400_film.cube"
 
@@ -249,6 +252,11 @@ object SpectralFilmProfile {
     private var cachedCombined: SpectralFilmLut? = null
     private var cachedCombinedFilmKey: String? = null
     private var cachedCombinedPrintKey: String? = null
+
+    @Volatile
+    private var cachedPreviewConfig: LutConfig? = null
+    private var cachedPreviewFilmKey: String? = null
+    private var cachedPreviewPrintKey: String? = null
 
     fun loadDefaultLut(context: Context): SpectralFilmLut? {
         cachedDefault?.let { return it }
@@ -284,6 +292,258 @@ object SpectralFilmProfile {
             lut
         }
     }
+
+    fun loadPreviewLutConfig(
+        context: Context,
+        filmStock: String,
+        printPaper: String
+    ): LutConfig? {
+        if (cachedPreviewFilmKey == filmStock && cachedPreviewPrintKey == printPaper) {
+            cachedPreviewConfig?.let { return it }
+        }
+        return synchronized(this) {
+            if (cachedPreviewFilmKey == filmStock && cachedPreviewPrintKey == printPaper) {
+                cachedPreviewConfig?.let { return it }
+            }
+            loadCombinedLut(context, filmStock, printPaper)?.toPreviewLutConfig()?.also { config ->
+                cachedPreviewConfig = config
+                cachedPreviewFilmKey = filmStock
+                cachedPreviewPrintKey = printPaper
+            }
+        }
+    }
+
+    private fun SpectralFilmLut.toPreviewLutConfig(): LutConfig {
+        val rgbValues = FloatArray(size * size * size * 3)
+        val srgbToProPhoto = computeWorkingToOutputTransform(ColorSpace.SRGB, ColorSpace.ProPhoto)
+        val proPhotoToSrgb = computeWorkingToOutputTransform(ColorSpace.ProPhoto, ColorSpace.SRGB)
+        var dst = 0
+        for (b in 0 until size) {
+            val bEncoded = b.toFloat() / (size - 1).toFloat()
+            val bLinear = decodeSrgb(bEncoded)
+            for (g in 0 until size) {
+                val gEncoded = g.toFloat() / (size - 1).toFloat()
+                val gLinear = decodeSrgb(gEncoded)
+                for (r in 0 until size) {
+                    val rEncoded = r.toFloat() / (size - 1).toFloat()
+                    val rLinear = decodeSrgb(rEncoded)
+
+                    val proPhotoInputR = srgbToProPhoto[0] * rLinear +
+                        srgbToProPhoto[1] * gLinear +
+                        srgbToProPhoto[2] * bLinear
+                    val proPhotoInputG = srgbToProPhoto[3] * rLinear +
+                        srgbToProPhoto[4] * gLinear +
+                        srgbToProPhoto[5] * bLinear
+                    val proPhotoInputB = srgbToProPhoto[6] * rLinear +
+                        srgbToProPhoto[7] * gLinear +
+                        srgbToProPhoto[8] * bLinear
+
+                    val spectralCoordR = encodeProPhoto(proPhotoInputR / RAW_SPECTRAL_FILM_INPUT_SCALE)
+                    val spectralCoordG = encodeProPhoto(proPhotoInputG / RAW_SPECTRAL_FILM_INPUT_SCALE)
+                    val spectralCoordB = encodeProPhoto(proPhotoInputB / RAW_SPECTRAL_FILM_INPUT_SCALE)
+
+                    val spectralEncoded = sampleSpectralLut(
+                        spectralCoordR,
+                        spectralCoordG,
+                        spectralCoordB
+                    )
+                    val proPhotoR = decodeProPhoto(spectralEncoded[0])
+                    val proPhotoG = decodeProPhoto(spectralEncoded[1])
+                    val proPhotoB = decodeProPhoto(spectralEncoded[2])
+
+                    val srgbLinearR = proPhotoToSrgb[0] * proPhotoR +
+                        proPhotoToSrgb[1] * proPhotoG +
+                        proPhotoToSrgb[2] * proPhotoB
+                    val srgbLinearG = proPhotoToSrgb[3] * proPhotoR +
+                        proPhotoToSrgb[4] * proPhotoG +
+                        proPhotoToSrgb[5] * proPhotoB
+                    val srgbLinearB = proPhotoToSrgb[6] * proPhotoR +
+                        proPhotoToSrgb[7] * proPhotoG +
+                        proPhotoToSrgb[8] * proPhotoB
+
+                    rgbValues[dst++] = encodeSrgb(srgbLinearR)
+                    rgbValues[dst++] = encodeSrgb(srgbLinearG)
+                    rgbValues[dst++] = encodeSrgb(srgbLinearB)
+                }
+            }
+        }
+        return LutConfig(
+            size = size,
+            data = rgbValues,
+            title = "Spectral Film Preview: $name",
+            configDataType = LutConfig.CONFIG_DATA_TYPE_UINT16
+        )
+    }
+
+    private fun SpectralFilmLut.sampleSpectralLut(
+        r: Float,
+        g: Float,
+        b: Float
+    ): FloatArray {
+        val maxIndex = size - 1
+        val x = r.coerceIn(0f, 1f) * maxIndex
+        val y = g.coerceIn(0f, 1f) * maxIndex
+        val z = b.coerceIn(0f, 1f) * maxIndex
+
+        val x0 = x.toInt().coerceIn(0, maxIndex)
+        val y0 = y.toInt().coerceIn(0, maxIndex)
+        val z0 = z.toInt().coerceIn(0, maxIndex)
+        val x1 = (x0 + 1).coerceAtMost(maxIndex)
+        val y1 = (y0 + 1).coerceAtMost(maxIndex)
+        val z1 = (z0 + 1).coerceAtMost(maxIndex)
+
+        val tx = x - x0
+        val ty = y - y0
+        val tz = z - z0
+
+        fun valueAt(ix: Int, iy: Int, iz: Int, channel: Int): Float {
+            return values[(((iz * size + iy) * size + ix) * 4) + channel]
+        }
+
+        val result = FloatArray(3)
+        for (channel in 0..2) {
+            val c000 = valueAt(x0, y0, z0, channel)
+            val c100 = valueAt(x1, y0, z0, channel)
+            val c010 = valueAt(x0, y1, z0, channel)
+            val c110 = valueAt(x1, y1, z0, channel)
+            val c001 = valueAt(x0, y0, z1, channel)
+            val c101 = valueAt(x1, y0, z1, channel)
+            val c011 = valueAt(x0, y1, z1, channel)
+            val c111 = valueAt(x1, y1, z1, channel)
+
+            val c00 = c000 * (1f - tx) + c100 * tx
+            val c10 = c010 * (1f - tx) + c110 * tx
+            val c01 = c001 * (1f - tx) + c101 * tx
+            val c11 = c011 * (1f - tx) + c111 * tx
+            val c0 = c00 * (1f - ty) + c10 * ty
+            val c1 = c01 * (1f - ty) + c11 * ty
+            result[channel] = c0 * (1f - tz) + c1 * tz
+        }
+        return result
+    }
+
+    private fun decodeSrgb(value: Float): Float {
+        val clamped = value.coerceIn(0f, 1f)
+        return if (clamped <= 0.04045f) {
+            clamped / 12.92f
+        } else {
+            ((clamped + 0.055f) / 1.055f).toDouble().pow(2.4).toFloat()
+        }
+    }
+
+    private fun decodeProPhoto(value: Float): Float {
+        val clamped = value.coerceIn(0f, 1f)
+        return if (clamped < 0.03125f) {
+            clamped / 16f
+        } else {
+            clamped.toDouble().pow(1.8).toFloat()
+        }
+    }
+
+    private fun encodeSrgb(value: Float): Float {
+        val clamped = value.coerceIn(0f, 1f)
+        return if (clamped <= 0.0031308f) {
+            clamped * 12.92f
+        } else {
+            1.055f * clamped.toDouble().pow(1.0 / 2.4).toFloat() - 0.055f
+        }.coerceIn(0f, 1f)
+    }
+
+    private fun computeWorkingToOutputTransform(
+        workingSpace: ColorSpace,
+        outputSpace: ColorSpace
+    ): FloatArray {
+        val workingFromXyz = computeXyzD50ToGamut(workingSpace) ?: return identityMatrix3x3()
+        val xyzFromWorking = invertMatrix3x3(workingFromXyz) ?: return identityMatrix3x3()
+        val outputFromXyz = computeXyzD50ToGamut(outputSpace) ?: return identityMatrix3x3()
+        return multiplyMatrix3x3(outputFromXyz, xyzFromWorking)
+    }
+
+    private fun computeXyzD50ToGamut(colorSpace: ColorSpace): FloatArray? {
+        val xr = colorSpace.xr
+        val yr = colorSpace.yr
+        val xg = colorSpace.xg
+        val yg = colorSpace.yg
+        val xb = colorSpace.xb
+        val yb = colorSpace.yb
+        val xw = colorSpace.xw
+        val yw = colorSpace.yw
+
+        val mS = floatArrayOf(
+            xr / yr, xg / yg, xb / yb,
+            1f, 1f, 1f,
+            (1 - xr - yr) / yr, (1 - xg - yg) / yg, (1 - xb - yb) / yb
+        )
+        val invS = invertMatrix3x3(mS) ?: return null
+
+        val xWhite = xw / yw
+        val yWhite = 1f
+        val zWhite = (1 - xw - yw) / yw
+
+        val sR = invS[0] * xWhite + invS[1] * yWhite + invS[2] * zWhite
+        val sG = invS[3] * xWhite + invS[4] * yWhite + invS[5] * zWhite
+        val sB = invS[6] * xWhite + invS[7] * yWhite + invS[8] * zWhite
+
+        val gamutToXyzNative = floatArrayOf(
+            mS[0] * sR, mS[1] * sG, mS[2] * sB,
+            mS[3] * sR, mS[4] * sG, mS[5] * sB,
+            mS[6] * sR, mS[7] * sG, mS[8] * sB
+        )
+
+        val bradfordD65ToD50 = floatArrayOf(
+            1.0478112f, 0.0228866f, -0.0501270f,
+            0.0295424f, 0.9904844f, -0.0170491f,
+            -0.0092345f, 0.0150436f, 0.7521316f
+        )
+
+        val gamutToXyzD50 = if (isD50WhitePoint(xw, yw)) {
+            gamutToXyzNative
+        } else {
+            multiplyMatrix3x3(bradfordD65ToD50, gamutToXyzNative)
+        }
+        return invertMatrix3x3(gamutToXyzD50)
+    }
+
+    private fun isD50WhitePoint(x: Float, y: Float): Boolean {
+        return abs(x - 0.3457f) < 0.002f && abs(y - 0.3585f) < 0.002f
+    }
+
+    private fun multiplyMatrix3x3(lhs: FloatArray, rhs: FloatArray): FloatArray {
+        return FloatArray(9) { index ->
+            val row = index / 3
+            val col = index % 3
+            lhs[row * 3] * rhs[col] +
+                lhs[row * 3 + 1] * rhs[3 + col] +
+                lhs[row * 3 + 2] * rhs[6 + col]
+        }
+    }
+
+    private fun invertMatrix3x3(matrix: FloatArray): FloatArray? {
+        val det = matrix[0] * (matrix[4] * matrix[8] - matrix[5] * matrix[7]) -
+            matrix[1] * (matrix[3] * matrix[8] - matrix[5] * matrix[6]) +
+            matrix[2] * (matrix[3] * matrix[7] - matrix[4] * matrix[6])
+
+        if (abs(det) < 1e-12f) return null
+
+        val invDet = 1.0f / det
+        return floatArrayOf(
+            (matrix[4] * matrix[8] - matrix[5] * matrix[7]) * invDet,
+            (matrix[2] * matrix[7] - matrix[1] * matrix[8]) * invDet,
+            (matrix[1] * matrix[5] - matrix[2] * matrix[4]) * invDet,
+            (matrix[5] * matrix[6] - matrix[3] * matrix[8]) * invDet,
+            (matrix[0] * matrix[8] - matrix[2] * matrix[6]) * invDet,
+            (matrix[2] * matrix[3] - matrix[0] * matrix[5]) * invDet,
+            (matrix[3] * matrix[7] - matrix[4] * matrix[6]) * invDet,
+            (matrix[1] * matrix[6] - matrix[0] * matrix[7]) * invDet,
+            (matrix[0] * matrix[4] - matrix[1] * matrix[3]) * invDet
+        )
+    }
+
+    private fun identityMatrix3x3(): FloatArray = floatArrayOf(
+        1f, 0f, 0f,
+        0f, 1f, 0f,
+        0f, 0f, 1f
+    )
 
     private fun loadCombinedLutInternal(
         context: Context,

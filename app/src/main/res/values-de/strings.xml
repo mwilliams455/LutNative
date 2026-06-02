@@ -97,7 +97,7 @@
     <string name="settings_section_capture">Aufnahme</string>
     <string name="settings_section_display">Anzeige</string>
     <string name="settings_use_raw">RAW-Aufnahme</string>
-    <string name="settings_use_raw_description">Fotos im RAW-Format (DNG) für höhere Qualität aufnehmen. Ausschalten, um YUV-Format zu verwenden.</string>
+    <string name="settings_use_raw_description">Fotos im RAW-Format (DNG) für höhere Qualität aufnehmen.</string>
     <string name="settings_level_indicator">Wasserwaage</string>
     <string name="settings_level_description">Horizontale Wasserwaage beim Fotografieren anzeigen</string>
     <string name="settings_grid_lines">Gitternetzlinien</string>

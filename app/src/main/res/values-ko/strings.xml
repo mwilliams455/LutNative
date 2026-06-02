@@ -98,7 +98,7 @@
     <string name="settings_section_capture">촬영</string>
     <string name="settings_section_display">화면</string>
     <string name="settings_use_raw">RAW 촬영</string>
-    <string name="settings_use_raw_description">더 높은 품질을 위해 RAW 형식(DNG)으로 사진을 촬영합니다. YUV 형식을 사용하려면 끕니다.</string>
+    <string name="settings_use_raw_description">더 높은 품질을 위해 RAW 형식(DNG)으로 사진을 촬영합니다.</string>
     <string name="settings_level_indicator">수평계</string>
     <string name="settings_level_description">촬영 중 수평계 표시</string>
     <string name="settings_grid_lines">격자선</string>

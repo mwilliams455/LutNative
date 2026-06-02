@@ -131,7 +131,7 @@
     <string name="settings_section_data_maintenance">資料維護</string>
     <string name="settings_section_help_about">幫助與關於</string>
     <string name="settings_use_raw">RAW 拍攝</string>
-    <string name="settings_use_raw_description">使用 RAW 格式 (DNG) 拍攝。關閉後將使用 YCBCR_P010/YUV_420 格式。</string>
+    <string name="settings_use_raw_description">使用 RAW 格式 (DNG) 拍攝。</string>
     <string name="settings_level_indicator">水平儀</string>
     <string name="settings_level_description">在拍攝時顯示水平儀，幫助保持畫面水平</string>
     <string name="settings_focus_peaking">峰值對焦</string>

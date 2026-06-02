@@ -205,7 +205,7 @@
     <string name="settings_section_data_maintenance">Data Maintenance</string>
     <string name="settings_section_help_about">Help &amp; About</string>
     <string name="settings_use_raw">RAW Capture</string>
-    <string name="settings_use_raw_description">Capture photos in RAW format (DNG) for higher quality. Turn off to use YUV format.</string>
+    <string name="settings_use_raw_description">Capture photos in RAW format (DNG) for higher quality.</string>
     <string name="settings_level_indicator">Horizontal Level</string>
     <string name="settings_level_description">Show horizontal level indicator while shooting</string>
     <string name="settings_focus_peaking">Focus Peaking</string>

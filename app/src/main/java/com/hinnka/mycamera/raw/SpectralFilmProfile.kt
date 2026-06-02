@@ -242,6 +242,7 @@ object SpectralFilmProfile {
     private const val TAG = "SpectralFilmProfile"
     private const val LUT_SIZE = 17
     private const val RAW_SPECTRAL_FILM_INPUT_SCALE = 2.88f
+    private const val PREVIEW_EXPOSURE_ANCHOR_SRGB = 0.5f
 
     private const val DEFAULT_FILM_ASSET = "spektrafilm/profiles/kodak_portra_400_film.cube"
 
@@ -317,53 +318,25 @@ object SpectralFilmProfile {
         val rgbValues = FloatArray(size * size * size * 3)
         val srgbToProPhoto = computeWorkingToOutputTransform(ColorSpace.SRGB, ColorSpace.ProPhoto)
         val proPhotoToSrgb = computeWorkingToOutputTransform(ColorSpace.ProPhoto, ColorSpace.SRGB)
+        val previewExposureGain = computePreviewExposureGain(srgbToProPhoto, proPhotoToSrgb)
         var dst = 0
         for (b in 0 until size) {
             val bEncoded = b.toFloat() / (size - 1).toFloat()
-            val bLinear = decodeSrgb(bEncoded)
             for (g in 0 until size) {
                 val gEncoded = g.toFloat() / (size - 1).toFloat()
-                val gLinear = decodeSrgb(gEncoded)
                 for (r in 0 until size) {
                     val rEncoded = r.toFloat() / (size - 1).toFloat()
-                    val rLinear = decodeSrgb(rEncoded)
-
-                    val proPhotoInputR = srgbToProPhoto[0] * rLinear +
-                        srgbToProPhoto[1] * gLinear +
-                        srgbToProPhoto[2] * bLinear
-                    val proPhotoInputG = srgbToProPhoto[3] * rLinear +
-                        srgbToProPhoto[4] * gLinear +
-                        srgbToProPhoto[5] * bLinear
-                    val proPhotoInputB = srgbToProPhoto[6] * rLinear +
-                        srgbToProPhoto[7] * gLinear +
-                        srgbToProPhoto[8] * bLinear
-
-                    val spectralCoordR = encodeProPhoto(proPhotoInputR / RAW_SPECTRAL_FILM_INPUT_SCALE)
-                    val spectralCoordG = encodeProPhoto(proPhotoInputG / RAW_SPECTRAL_FILM_INPUT_SCALE)
-                    val spectralCoordB = encodeProPhoto(proPhotoInputB / RAW_SPECTRAL_FILM_INPUT_SCALE)
-
-                    val spectralEncoded = sampleSpectralLut(
-                        spectralCoordR,
-                        spectralCoordG,
-                        spectralCoordB
+                    val srgbLinear = samplePreviewLinearSrgb(
+                        rEncoded,
+                        gEncoded,
+                        bEncoded,
+                        srgbToProPhoto,
+                        proPhotoToSrgb
                     )
-                    val proPhotoR = decodeProPhoto(spectralEncoded[0])
-                    val proPhotoG = decodeProPhoto(spectralEncoded[1])
-                    val proPhotoB = decodeProPhoto(spectralEncoded[2])
 
-                    val srgbLinearR = proPhotoToSrgb[0] * proPhotoR +
-                        proPhotoToSrgb[1] * proPhotoG +
-                        proPhotoToSrgb[2] * proPhotoB
-                    val srgbLinearG = proPhotoToSrgb[3] * proPhotoR +
-                        proPhotoToSrgb[4] * proPhotoG +
-                        proPhotoToSrgb[5] * proPhotoB
-                    val srgbLinearB = proPhotoToSrgb[6] * proPhotoR +
-                        proPhotoToSrgb[7] * proPhotoG +
-                        proPhotoToSrgb[8] * proPhotoB
-
-                    rgbValues[dst++] = encodeSrgb(srgbLinearR)
-                    rgbValues[dst++] = encodeSrgb(srgbLinearG)
-                    rgbValues[dst++] = encodeSrgb(srgbLinearB)
+                    rgbValues[dst++] = encodeSrgb(srgbLinear[0] * previewExposureGain)
+                    rgbValues[dst++] = encodeSrgb(srgbLinear[1] * previewExposureGain)
+                    rgbValues[dst++] = encodeSrgb(srgbLinear[2] * previewExposureGain)
                 }
             }
         }
@@ -373,6 +346,73 @@ object SpectralFilmProfile {
             title = "Spectral Film Preview: $name",
             configDataType = LutConfig.CONFIG_DATA_TYPE_UINT16
         )
+    }
+
+    private fun SpectralFilmLut.computePreviewExposureGain(
+        srgbToProPhoto: FloatArray,
+        proPhotoToSrgb: FloatArray
+    ): Float {
+        val targetLinear = decodeSrgb(PREVIEW_EXPOSURE_ANCHOR_SRGB)
+        val previewLinear = samplePreviewLinearSrgb(
+            PREVIEW_EXPOSURE_ANCHOR_SRGB,
+            PREVIEW_EXPOSURE_ANCHOR_SRGB,
+            PREVIEW_EXPOSURE_ANCHOR_SRGB,
+            srgbToProPhoto,
+            proPhotoToSrgb
+        )
+        val previewLuma = linearSrgbLuma(previewLinear)
+        return (targetLinear / previewLuma.coerceAtLeast(1e-6f)).coerceIn(0.25f, 4f)
+    }
+
+    private fun SpectralFilmLut.samplePreviewLinearSrgb(
+        rEncoded: Float,
+        gEncoded: Float,
+        bEncoded: Float,
+        srgbToProPhoto: FloatArray,
+        proPhotoToSrgb: FloatArray
+    ): FloatArray {
+        val rLinear = decodeSrgb(rEncoded)
+        val gLinear = decodeSrgb(gEncoded)
+        val bLinear = decodeSrgb(bEncoded)
+
+        val proPhotoInputR = srgbToProPhoto[0] * rLinear +
+            srgbToProPhoto[1] * gLinear +
+            srgbToProPhoto[2] * bLinear
+        val proPhotoInputG = srgbToProPhoto[3] * rLinear +
+            srgbToProPhoto[4] * gLinear +
+            srgbToProPhoto[5] * bLinear
+        val proPhotoInputB = srgbToProPhoto[6] * rLinear +
+            srgbToProPhoto[7] * gLinear +
+            srgbToProPhoto[8] * bLinear
+
+        val spectralCoordR = encodeProPhoto(proPhotoInputR / RAW_SPECTRAL_FILM_INPUT_SCALE)
+        val spectralCoordG = encodeProPhoto(proPhotoInputG / RAW_SPECTRAL_FILM_INPUT_SCALE)
+        val spectralCoordB = encodeProPhoto(proPhotoInputB / RAW_SPECTRAL_FILM_INPUT_SCALE)
+
+        val spectralEncoded = sampleSpectralLut(
+            spectralCoordR,
+            spectralCoordG,
+            spectralCoordB
+        )
+        val proPhotoR = decodeProPhoto(spectralEncoded[0])
+        val proPhotoG = decodeProPhoto(spectralEncoded[1])
+        val proPhotoB = decodeProPhoto(spectralEncoded[2])
+
+        return floatArrayOf(
+            proPhotoToSrgb[0] * proPhotoR +
+                proPhotoToSrgb[1] * proPhotoG +
+                proPhotoToSrgb[2] * proPhotoB,
+            proPhotoToSrgb[3] * proPhotoR +
+                proPhotoToSrgb[4] * proPhotoG +
+                proPhotoToSrgb[5] * proPhotoB,
+            proPhotoToSrgb[6] * proPhotoR +
+                proPhotoToSrgb[7] * proPhotoG +
+                proPhotoToSrgb[8] * proPhotoB
+        )
+    }
+
+    private fun linearSrgbLuma(rgb: FloatArray): Float {
+        return rgb[0] * 0.2126f + rgb[1] * 0.7152f + rgb[2] * 0.0722f
     }
 
     private fun SpectralFilmLut.sampleSpectralLut(

@@ -97,7 +97,7 @@
     <string name="settings_section_capture">キャプチャ</string>
     <string name="settings_section_display">表示</string>
     <string name="settings_use_raw">RAW撮影</string>
-    <string name="settings_use_raw_description">高画質なRAW形式(DNG)で撮影します。YUV形式にするにはオフにしてください。</string>
+    <string name="settings_use_raw_description">高画質なRAW形式(DNG)で撮影します。</string>
     <string name="settings_level_indicator">水準器</string>
     <string name="settings_level_description">撮影中に水平を表示します</string>
     <string name="settings_grid_lines">グリッド線</string>

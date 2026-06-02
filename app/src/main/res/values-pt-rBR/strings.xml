@@ -98,7 +98,7 @@
     <string name="settings_section_capture">Captura</string>
     <string name="settings_section_display">Exibição</string>
     <string name="settings_use_raw">Captura RAW</string>
-    <string name="settings_use_raw_description">Capturar fotos no formato RAW (DNG) para maior qualidade. Desative para usar o formato YUV.</string>
+    <string name="settings_use_raw_description">Capturar fotos no formato RAW (DNG) para maior qualidade.</string>
     <string name="settings_level_indicator">Nível Horizontal</string>
     <string name="settings_level_description">Mostrar indicador de nível horizontal ao fotografar</string>
     <string name="settings_grid_lines">Linhas de Grade</string>

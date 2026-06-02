@@ -176,10 +176,10 @@ fun CameraTopSheet(
                     )
 
                     if (isRawSupported) {
-                        QuickSettingToggle(
+                        QuickSettingButton2(
                             title = stringResource(R.string.baseline_target_raw),
                             checked = useRaw,
-                            onCheckedChange = { showRawSheet = true },
+                            onClick = { showRawSheet = true },
                             modifier = Modifier.weight(1f)
                         )
                     }

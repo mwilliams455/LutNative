@@ -97,7 +97,7 @@
     <string name="settings_section_capture">Tangkap</string>
     <string name="settings_section_display">Tampilan</string>
     <string name="settings_use_raw">Tangkapan RAW</string>
-    <string name="settings_use_raw_description">Tangkap foto dalam format RAW (DNG) untuk kualitas lebih tinggi. Matikan untuk menggunakan format YUV.</string>
+    <string name="settings_use_raw_description">Tangkap foto dalam format RAW (DNG) untuk kualitas lebih tinggi.</string>
     <string name="settings_level_indicator">Level Horizontal</string>
     <string name="settings_level_description">Tampilkan indikator level horizontal saat memotret</string>
     <string name="settings_grid_lines">Garis Kisi</string>

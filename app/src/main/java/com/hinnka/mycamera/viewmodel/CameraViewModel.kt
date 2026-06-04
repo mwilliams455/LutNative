@@ -653,9 +653,6 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     @OptIn(ExperimentalCoroutinesApi::class)
     val currentBaselineRecipeParams: StateFlow<ColorRecipeParams> =
         userPreferencesRepository.userPreferences.flatMapLatest { prefs ->
-            if (shouldUseSpectralFilmPreview(prefs)) {
-                return@flatMapLatest flowOf(ColorRecipeParams.DEFAULT)
-            }
             val target = resolvePreviewBaselineTarget(prefs.useRaw)
             val lutId = target?.let { prefs.getBaselineLutId(it) }
             if (target == null || lutId == null) {
@@ -1643,29 +1640,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
         )
     }
 
-    private fun shouldUseSpectralFilmPreview(userPrefs: UserPreferences): Boolean {
-        return userPrefs.useRaw && userPrefs.rawSpectralFilmEnabled
-    }
-
     private fun resolvePreviewBaselineLut(userPrefs: UserPreferences): LutConfig? {
-        if (shouldUseSpectralFilmPreview(userPrefs)) {
-            val settings = resolveRawSpectralFilmSettings(userPrefs)
-            val stock = settings.stock ?: return null
-            val print = settings.print ?: return null
-            return SpectralFilmProfile.loadPreviewLutConfig(
-                getApplication<Application>(),
-                stock,
-                print,
-                settings.tuning
-            ).also { config ->
-                if (config == null) {
-                    PLog.w(TAG, "Failed to load spectral film preview LUT: stock=$stock, print=$print")
-                } else {
-                    PLog.d(TAG, "Loaded spectral film preview LUT: stock=$stock, print=$print")
-                }
-            }
-        }
-
         val baselineLutId = resolvePreviewBaselineTarget(userPrefs.useRaw)
             ?.let { userPrefs.getBaselineLutId(it) }
         return baselineLutId?.let { contentRepository.lutManager.loadLut(it) }

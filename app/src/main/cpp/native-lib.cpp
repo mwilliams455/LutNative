@@ -1476,6 +1476,42 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
   delete stacker;
 }
 
+
+// LUT-Native base neutralizer.
+// The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
+// This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
+static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.86f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.74f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.025f;
+
+static inline float lutNativeClamp01(float v) {
+  return std::max(0.0f, std::min(1.0f, v));
+}
+
+static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
+  if (!LUT_NATIVE_YUV_BASE_NEUTRAL) {
+    return;
+  }
+
+  const float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+
+  // Reduce baked contrast around middle gray, then gently lift very low values.
+  float yNeutral = (y - 0.5f) * LUT_NATIVE_BASE_CONTRAST + 0.5f;
+  yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
+  yNeutral = lutNativeClamp01(yNeutral);
+
+  // Reduce baked chroma while preserving hue relationships.
+  const float dr = r - y;
+  const float dg = g - y;
+  const float db = b - y;
+
+  r = lutNativeClamp01(yNeutral + dr * LUT_NATIVE_BASE_SATURATION);
+  g = lutNativeClamp01(yNeutral + dg * LUT_NATIVE_BASE_SATURATION);
+  b = lutNativeClamp01(yNeutral + db * LUT_NATIVE_BASE_SATURATION);
+}
+
+
 /**
  * 处理 YUV_420_888 或 P010 图像：旋转、裁切、转换为 RGBA16
  */
@@ -1631,9 +1667,11 @@ Java_com_hinnka_mycamera_utils_YuvProcessor_processAndSaveYuv(
         hdrBInput = Y_val + 1.772f * U_val;
       }
 
-      const float R = std::max(0.0f, std::min(1.0f, hdrRInput));
-      const float G = std::max(0.0f, std::min(1.0f, hdrGInput));
-      const float B = std::max(0.0f, std::min(1.0f, hdrBInput));
+      float R = std::max(0.0f, std::min(1.0f, hdrRInput));
+      float G = std::max(0.0f, std::min(1.0f, hdrGInput));
+      float B = std::max(0.0f, std::min(1.0f, hdrBInput));
+
+      applyLutNativeBaseNeutral(R, G, B);
 
       int idx = y * finalWidth + x;
 

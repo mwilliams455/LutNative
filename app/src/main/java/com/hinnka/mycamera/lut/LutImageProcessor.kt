@@ -261,7 +261,7 @@ class LutImageProcessor {
             }
         }
 
-        // LUT-Native Mode: let the selected LUT carry the look instead of stacking recipe/NR/sharpening first.
+        // LUT-Native Mode: disable recipe/NR/sharpening so the selected LUT carries the look.
         val effectiveRecipeParams = if (lutNativeModeEnabled) null else colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
         val redHalation = effectiveRecipeParams?.redHalation ?: 0f
@@ -342,7 +342,9 @@ class LutImageProcessor {
         chromaNoiseReductionValue: Float = 0f,
     ): Bitmap {
         if (lutNativeModeEnabled) {
-            val layer = creativeLayer ?: baselineLayer
+            // True LUT-native test: never fall back to the Standard/baseline layer.
+            // If creativeLayer is null/none, render neutral with no LUT and no recipe.
+            val layer = creativeLayer
             return applyLut(
                 argbData = argbData,
                 width = width,
@@ -432,7 +434,7 @@ class LutImageProcessor {
             }
         }
 
-        // LUT-Native Mode: let the selected LUT carry the look instead of stacking recipe/NR/sharpening first.
+        // LUT-Native Mode: disable recipe/NR/sharpening so the selected LUT carries the look.
         val effectiveRecipeParams = if (lutNativeModeEnabled) null else colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
         val redHalation = effectiveRecipeParams?.redHalation ?: 0f
@@ -513,7 +515,9 @@ class LutImageProcessor {
         chromaNoiseReductionValue: Float = 0f,
     ): Bitmap {
         if (lutNativeModeEnabled) {
-            val layer = creativeLayer ?: baselineLayer
+            // True LUT-native test: never fall back to the Standard/baseline layer.
+            // If creativeLayer is null/none, render neutral with no LUT and no recipe.
+            val layer = creativeLayer
             return applyLut(
                 bitmap = bitmap,
                 isHlgInput = isHlgInput,

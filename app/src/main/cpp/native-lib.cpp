@@ -1477,16 +1477,23 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v3.
+// LUT-Native base neutralizer v4.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
+// v4 keeps the v3 tone values but adds shadow-weighted chroma cleanup to reduce green/magenta speckle.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
 static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.84f;
 static constexpr float LUT_NATIVE_BASE_SATURATION = 0.76f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.58f;
+static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
 static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.040f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
+}
+
+static inline float lutNativeMix(float a, float b, float t) {
+  return a + (b - a) * t;
 }
 
 static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
@@ -1502,13 +1509,23 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   yNeutral = lutNativeClamp01(yNeutral);
 
   // Reduce baked chroma while preserving hue relationships.
+  // In shadows, damp chroma more strongly to suppress green/magenta speckle without blurring luma detail.
+  float shadowWeight = lutNativeClamp01((LUT_NATIVE_SHADOW_CHROMA_THRESHOLD - yNeutral) / LUT_NATIVE_SHADOW_CHROMA_THRESHOLD);
+  shadowWeight = shadowWeight * shadowWeight;
+
+  const float saturation = lutNativeMix(
+      LUT_NATIVE_BASE_SATURATION,
+      LUT_NATIVE_SHADOW_SATURATION,
+      shadowWeight
+  );
+
   const float dr = r - y;
   const float dg = g - y;
   const float db = b - y;
 
-  r = lutNativeClamp01(yNeutral + dr * LUT_NATIVE_BASE_SATURATION);
-  g = lutNativeClamp01(yNeutral + dg * LUT_NATIVE_BASE_SATURATION);
-  b = lutNativeClamp01(yNeutral + db * LUT_NATIVE_BASE_SATURATION);
+  r = lutNativeClamp01(yNeutral + dr * saturation);
+  g = lutNativeClamp01(yNeutral + dg * saturation);
+  b = lutNativeClamp01(yNeutral + db * saturation);
 }
 
 

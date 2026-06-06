@@ -97,6 +97,21 @@ class LutImageProcessor {
 
     private var isInitialized = false
 
+    companion object {
+        /**
+         * Experimental hardcoded LUT-native mode for the LutNative fork.
+         *
+         * When enabled, stacked baseline + creative rendering is collapsed into a
+         * single selected LUT pass with recipe, pre-LUT denoise, chroma denoise,
+         * and sharpening disabled. This prevents the image from being processed
+         * once by the app and then processed again by the LUT.
+         *
+         * This is intentionally hardcoded for the first proof-of-concept build.
+         * Once output is validated on-device, it should become a real user setting.
+         */
+        private const val LUT_NATIVE_MODE = true
+    }
+
     // Uniform 位置
     private var uImageTextureLoc = 0
     private var uLutTextureLoc = 0
@@ -339,6 +354,22 @@ class LutImageProcessor {
         noiseReductionValue: Float = 0f,
         chromaNoiseReductionValue: Float = 0f,
     ): Bitmap {
+        if (LUT_NATIVE_MODE) {
+            val selectedLut = creativeLayer?.lutConfig ?: baselineLayer?.lutConfig
+            return applyLut(
+                argbData = argbData,
+                width = width,
+                height = height,
+                colorSpace = colorSpace,
+                isHlgInput = isHlgInput,
+                lutConfig = selectedLut,
+                colorRecipeParams = null,
+                sharpeningValue = 0f,
+                noiseReductionValue = 0f,
+                chromaNoiseReductionValue = 0f
+            )
+        }
+
         val hasBaseline = baselineLayer?.lutConfig != null || baselineLayer?.colorRecipeParams != null
         val hasCreative = creativeLayer?.lutConfig != null || creativeLayer?.colorRecipeParams != null
         return when {
@@ -495,6 +526,19 @@ class LutImageProcessor {
         noiseReductionValue: Float = 0f,
         chromaNoiseReductionValue: Float = 0f,
     ): Bitmap {
+        if (LUT_NATIVE_MODE) {
+            val selectedLut = creativeLayer?.lutConfig ?: baselineLayer?.lutConfig
+            return applyLut(
+                bitmap = bitmap,
+                isHlgInput = isHlgInput,
+                lutConfig = selectedLut,
+                colorRecipeParams = null,
+                sharpeningValue = 0f,
+                noiseReductionValue = 0f,
+                chromaNoiseReductionValue = 0f
+            )
+        }
+
         val hasBaseline = baselineLayer?.lutConfig != null || baselineLayer?.colorRecipeParams != null
         val hasCreative = creativeLayer?.lutConfig != null || creativeLayer?.colorRecipeParams != null
         return when {

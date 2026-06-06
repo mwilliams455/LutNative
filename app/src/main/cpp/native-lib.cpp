@@ -1477,18 +1477,24 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v6.
+// LUT-Native base neutralizer v7 - Base Depth.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v6 keeps the v5 tone/chroma cleanup but adds tiny midtone warmth protection so tungsten scenes
-// are not pulled too far into cool/cyan clinical rendering.
+// v7 is focused on making the no-LUT base look more photographic:
+// - less milky lift than v6
+// - deeper lower mids
+// - softer highlight shoulder
+// - same shadow chroma cleanup
+// - same tiny midtone warmth protection
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.87f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.77f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.58f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.90f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.76f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.57f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.028f;
-static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.015f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.018f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.028f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.055f;
+static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1505,10 +1511,21 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
 
   const float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
 
-  // Reduce baked contrast around middle gray, then gently lift lower values.
+  // Reduce baked contrast around middle gray, then apply a smaller black lift than v6.
   float yNeutral = (y - 0.5f) * LUT_NATIVE_BASE_CONTRAST + 0.5f;
   yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
   yNeutral = lutNativeClamp01(yNeutral);
+
+  // Add density mainly in lower mids. This gives the base more body without simply crushing blacks.
+  float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.34f) / 0.34f;
+  lowerMidWeight = lutNativeClamp01(lowerMidWeight);
+  lowerMidWeight = lowerMidWeight * lowerMidWeight;
+  yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_LOWER_MID_DENSITY * lowerMidWeight));
+
+  // Gentle highlight shoulder. This reduces the clean/digital bright feel without making the image muddy.
+  float highlightWeight = lutNativeClamp01((yNeutral - 0.62f) / 0.38f);
+  highlightWeight = highlightWeight * highlightWeight;
+  yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_HIGHLIGHT_SHOULDER * highlightWeight * (1.0f - yNeutral)));
 
   // Reduce baked chroma while preserving hue relationships.
   // In shadows, damp chroma more strongly to suppress green/magenta speckle without blurring luma detail.
@@ -1530,7 +1547,7 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   b = lutNativeClamp01(yNeutral + db * saturation);
 
   // Tiny warmth protection in midtones only.
-  // This is intentionally weak: it should protect tungsten skin/wood warmth without creating a strong preset look.
+  // Weaker than v6 so tungsten is protected without making the base too orange before LUTs.
   float midtoneWeight = 1.0f - std::abs(yNeutral - 0.50f) * 2.0f;
   midtoneWeight = lutNativeClamp01(midtoneWeight);
   midtoneWeight = midtoneWeight * midtoneWeight;

@@ -1477,13 +1477,13 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer.
+// LUT-Native base neutralizer v2.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.86f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.74f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.025f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.82f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.70f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.045f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1496,7 +1496,7 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
 
   const float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
 
-  // Reduce baked contrast around middle gray, then gently lift very low values.
+  // Reduce baked contrast around middle gray, then gently lift lower values.
   float yNeutral = (y - 0.5f) * LUT_NATIVE_BASE_CONTRAST + 0.5f;
   yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
   yNeutral = lutNativeClamp01(yNeutral);

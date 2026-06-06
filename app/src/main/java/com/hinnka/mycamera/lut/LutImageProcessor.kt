@@ -167,14 +167,14 @@ class LutImageProcessor {
             // 获取 EGL Display
             eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
             if (eglDisplay == EGL14.EGL_NO_DISPLAY) {
-                PLog.e(TAG, "Unable to get EGL display")
+                PLog.e("LutNativeMode", "Unable to get EGL display")
                 return false
             }
 
             // 初始化 EGL
             val version = IntArray(2)
             if (!EGL14.eglInitialize(eglDisplay, version, 0, version, 1)) {
-                PLog.e(TAG, "Unable to initialize EGL")
+                PLog.e("LutNativeMode", "Unable to initialize EGL")
                 return false
             }
 
@@ -192,7 +192,7 @@ class LutImageProcessor {
             val configs = arrayOfNulls<EGLConfig>(1)
             val numConfigs = IntArray(1)
             if (!EGL14.eglChooseConfig(eglDisplay, configAttribs, 0, configs, 0, 1, numConfigs, 0)) {
-                PLog.e(TAG, "Unable to choose EGL config")
+                PLog.e("LutNativeMode", "Unable to choose EGL config")
                 return false
             }
 
@@ -205,7 +205,7 @@ class LutImageProcessor {
             )
             eglContext = EGL14.eglCreateContext(eglDisplay, config, EGL14.EGL_NO_CONTEXT, contextAttribs, 0)
             if (eglContext == EGL14.EGL_NO_CONTEXT) {
-                PLog.e(TAG, "Unable to create EGL context")
+                PLog.e("LutNativeMode", "Unable to create EGL context")
                 return false
             }
 
@@ -217,13 +217,13 @@ class LutImageProcessor {
             )
             eglSurface = EGL14.eglCreatePbufferSurface(eglDisplay, config, surfaceAttribs, 0)
             if (eglSurface == EGL14.EGL_NO_SURFACE) {
-                PLog.e(TAG, "Unable to create EGL surface")
+                PLog.e("LutNativeMode", "Unable to create EGL surface")
                 return false
             }
 
             // 激活上下文
             if (!EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-                PLog.e(TAG, "Unable to make EGL current")
+                PLog.e("LutNativeMode", "Unable to make EGL current")
                 return false
             }
 
@@ -234,11 +234,11 @@ class LutImageProcessor {
             initBuffers()
 
             isInitialized = true
-            PLog.d(TAG, "LutImageProcessor initialized")
+            PLog.d("LutNativeMode", "LutImageProcessor initialized")
             return true
 
         } catch (e: Exception) {
-            PLog.e(TAG, "Failed to initialize", e)
+            PLog.e("LutNativeMode", "Failed to initialize", e)
             return false
         }
     }
@@ -912,7 +912,7 @@ class LutImageProcessor {
 
         val status = GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER)
         if (status != GLES30.GL_FRAMEBUFFER_COMPLETE) {
-            PLog.e(TAG, "Framebuffer not complete: $status")
+            PLog.e("LutNativeMode", "Framebuffer not complete: $status")
         }
 
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
@@ -995,7 +995,7 @@ class LutImageProcessor {
 
         val error = GLES30.glGetError()
         if (error != GLES30.GL_NO_ERROR) {
-            PLog.e(TAG, "glTexImage2D error: $error")
+            PLog.e("LutNativeMode", "glTexImage2D error: $error")
         }
     }
 
@@ -1104,8 +1104,7 @@ class LutImageProcessor {
         bitmapDenoiseBacktransformProgram = compileComputeProgram(DenoiseProfileShaders.BACKTRANSFORM_Y0U0V0, "BitmapDenoise_Backtransform")
         bitmapDenoisePassthroughProgram = createFragmentProgram(IMAGE_VERTEX_SHADER, TEXTURE_PASSTHROUGH_SHADER, "BitmapDenoise_Passthrough")
         bitmapChromaDenoiseProgram = createFragmentProgram(IMAGE_VERTEX_SHADER, ChromaDenoiseShaders.PASS_CHROMA_DENOISE, "BitmapChromaDenoise_BM3DPass0")
-        PLog.d(
-            TAG,
+        PLog.d("LutNativeMode",
             "Bitmap denoiseprofile programs initialized: pre=$bitmapDenoisePreconditionProgram " +
                 "decompose=$bitmapDenoiseDecomposeProgram synth=$bitmapDenoiseSynthesizeProgram " +
                 "reduce1=$bitmapDenoiseReduceFirstProgram reduce2=$bitmapDenoiseReduceSecondProgram " +
@@ -1133,8 +1132,7 @@ class LutImageProcessor {
         halationBlurVProgram = createProgram(vShader, HDF_BLUR_V_SHADER)
         GLES30.glDeleteShader(vShader)
 
-        PLog.d(
-            TAG,
+        PLog.d("LutNativeMode",
             "HDF/Halation programs initialized"
         )
     }
@@ -1173,7 +1171,7 @@ class LutImageProcessor {
 
             val status = GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER)
             if (status != GLES30.GL_FRAMEBUFFER_COMPLETE) {
-                PLog.e(TAG, "Bitmap denoiseprofile FBO $i incomplete: $status")
+                PLog.e("LutNativeMode", "Bitmap denoiseprofile FBO $i incomplete: $status")
             }
         }
         setupBitmapDenoiseResources(width, height)
@@ -1757,7 +1755,7 @@ class LutImageProcessor {
     private fun checkGlError(op: String) {
         val error = GLES30.glGetError()
         if (error != GLES30.GL_NO_ERROR) {
-            PLog.e(TAG, "$op: glError $error")
+            PLog.e("LutNativeMode", "$op: glError $error")
         }
     }
 
@@ -1798,7 +1796,7 @@ class LutImageProcessor {
         GLES30.glGetShaderiv(shader, GLES30.GL_COMPILE_STATUS, compiled, 0)
         if (compiled[0] == 0) {
             val error = GLES30.glGetShaderInfoLog(shader)
-            PLog.e(TAG, "Shader compilation failed: $error")
+            PLog.e("LutNativeMode", "Shader compilation failed: $error")
             GLES30.glDeleteShader(shader)
             return 0
         }
@@ -1816,7 +1814,7 @@ class LutImageProcessor {
         val linked = IntArray(1)
         GLES30.glGetProgramiv(program, GLES30.GL_LINK_STATUS, linked, 0)
         if (linked[0] == 0) {
-            PLog.e(TAG, "Program $name linking failed: ${GLES30.glGetProgramInfoLog(program)}")
+            PLog.e("LutNativeMode", "Program $name linking failed: ${GLES30.glGetProgramInfoLog(program)}")
             GLES30.glDeleteProgram(program)
             GLES30.glDeleteShader(vShader)
             GLES30.glDeleteShader(fShader)
@@ -1834,7 +1832,7 @@ class LutImageProcessor {
         val compiled = IntArray(1)
         GLES31.glGetShaderiv(shader, GLES31.GL_COMPILE_STATUS, compiled, 0)
         if (compiled[0] == 0) {
-            PLog.e(TAG, "Compute shader $name compilation failed: ${GLES31.glGetShaderInfoLog(shader)}")
+            PLog.e("LutNativeMode", "Compute shader $name compilation failed: ${GLES31.glGetShaderInfoLog(shader)}")
             GLES31.glDeleteShader(shader)
             return 0
         }
@@ -1844,7 +1842,7 @@ class LutImageProcessor {
         val linked = IntArray(1)
         GLES31.glGetProgramiv(program, GLES31.GL_LINK_STATUS, linked, 0)
         if (linked[0] == 0) {
-            PLog.e(TAG, "Compute program $name linking failed: ${GLES31.glGetProgramInfoLog(program)}")
+            PLog.e("LutNativeMode", "Compute program $name linking failed: ${GLES31.glGetProgramInfoLog(program)}")
             GLES31.glDeleteProgram(program)
             GLES31.glDeleteShader(shader)
             return 0
@@ -1946,7 +1944,7 @@ class LutImageProcessor {
         EGL14.eglTerminate(eglDisplay)
 
         isInitialized = false
-        PLog.d(TAG, "LutImageProcessor released")
+        PLog.d("LutNativeMode", "LutImageProcessor released")
     }
 
     companion object {

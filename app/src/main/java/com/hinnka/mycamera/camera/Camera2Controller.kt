@@ -1781,7 +1781,7 @@ class Camera2Controller(private val context: Context) {
         if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture &&
             availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_FAST)
         ) {
-            // LUT-Native capture v5: avoid high-quality/cooked still tonemap.
+            // LUT-Native capture v6: avoid high-quality/cooked still tonemap.
             builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST)
             return
         }
@@ -1871,7 +1871,7 @@ class Camera2Controller(private val context: Context) {
             val gains = kelvinToRggbGains(state.awbTemperature)
             builder.set(CaptureRequest.COLOR_CORRECTION_GAINS, gains)
         } else {
-            // LUT-Native capture v5: avoid HIGH_QUALITY color correction for stills.
+            // LUT-Native capture v6: avoid HIGH_QUALITY color correction for stills.
             if (isManualPostProcessingSupported) {
                 val colorCorrectionMode = if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture && state.captureMode == CaptureMode.PHOTO) {
                     CaptureRequest.COLOR_CORRECTION_MODE_FAST
@@ -2015,9 +2015,9 @@ class Camera2Controller(private val context: Context) {
             val currentState = _state.value
 
             if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture) {
-                // LUT-Native capture v5:
-                // Keep the neutral tone/color behavior, but reintroduce mild HAL noise reduction.
-                // v4 used NR_OFF first, which made the base too noisy.
+                // LUT-Native capture v6:
+                // Keep the neutral tone/color behavior, but use FAST HAL noise reduction.
+                // v5 preferred MINIMAL first, which was still too noisy indoors.
                 val neutralEdgeMode = when {
                     availableEdgeModes.contains(CaptureRequest.EDGE_MODE_OFF) -> CaptureRequest.EDGE_MODE_OFF
                     availableEdgeModes.contains(CaptureRequest.EDGE_MODE_FAST) -> CaptureRequest.EDGE_MODE_FAST
@@ -2025,13 +2025,13 @@ class Camera2Controller(private val context: Context) {
                 }
                 neutralEdgeMode?.let { builder.set(CaptureRequest.EDGE_MODE, it) }
 
-                val gentleNoiseReductionMode = when {
-                    availableNoiseReductionModes.contains(CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL) -> CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL
+                val cleanerNoiseReductionMode = when {
                     availableNoiseReductionModes.contains(CaptureRequest.NOISE_REDUCTION_MODE_FAST) -> CaptureRequest.NOISE_REDUCTION_MODE_FAST
+                    availableNoiseReductionModes.contains(CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL) -> CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL
                     availableNoiseReductionModes.contains(CaptureRequest.NOISE_REDUCTION_MODE_OFF) -> CaptureRequest.NOISE_REDUCTION_MODE_OFF
                     else -> null
                 }
-                gentleNoiseReductionMode?.let { builder.set(CaptureRequest.NOISE_REDUCTION_MODE, it) }
+                cleanerNoiseReductionMode?.let { builder.set(CaptureRequest.NOISE_REDUCTION_MODE, it) }
                 return
             }
 
@@ -2096,7 +2096,7 @@ class Camera2Controller(private val context: Context) {
         }
 
         if (LUT_NATIVE_CAPTURE_NEUTRAL) {
-            // LUT-Native capture v5: avoid high-quality aberration/hot-pixel/shading/distortion passes.
+            // LUT-Native capture v6: avoid high-quality aberration/hot-pixel/shading/distortion passes.
             applyFastStillPostProcessingSettings(builder)
             return
         }

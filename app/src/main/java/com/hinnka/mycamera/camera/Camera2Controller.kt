@@ -72,6 +72,7 @@ class Camera2Controller(private val context: Context) {
 
     companion object {
         private const val TAG = "Camera2Controller"
+        private const val LUT_NATIVE_CAPTURE_NEUTRAL = true
 
         // 预览时的最大曝光时间（纳秒）：1/15秒 = 66ms
         // 超过这个时间会导致预览帧率过低，画面卡顿
@@ -1777,6 +1778,16 @@ class Camera2Controller(private val context: Context) {
     }
 
     private fun applyToneMapSettings(builder: CaptureRequest.Builder, state: CameraState, isCapture: Boolean) {
+        if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture &&
+            availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)
+        ) {
+            // LUT-Native capture: keep the camera HAL tone response linear so the LUT carries the look.
+            val linearCurve = floatArrayOf(0f, 0f, 1f, 1f)
+            builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE)
+            builder.set(CaptureRequest.TONEMAP_CURVE, TonemapCurve(linearCurve, linearCurve, linearCurve))
+            return
+        }
+
         val linearizePreviewInput = state.fixTonemapPreview && !isCapture
         when (sanitizeTonemapMode(state.tonemapMode)) {
             "FAST" -> {
@@ -2002,6 +2013,26 @@ class Camera2Controller(private val context: Context) {
     private fun applyImageQualitySettings(builder: CaptureRequest.Builder, isCapture: Boolean) {
         try {
             val currentState = _state.value
+
+            if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture) {
+                // LUT-Native capture: avoid HAL edge enhancement and heavy denoise before LUT/rendering.
+                val neutralEdgeMode = when {
+                    availableEdgeModes.contains(CaptureRequest.EDGE_MODE_OFF) -> CaptureRequest.EDGE_MODE_OFF
+                    availableEdgeModes.contains(CaptureRequest.EDGE_MODE_FAST) -> CaptureRequest.EDGE_MODE_FAST
+                    else -> null
+                }
+                neutralEdgeMode?.let { builder.set(CaptureRequest.EDGE_MODE, it) }
+
+                val neutralNoiseReductionMode = when {
+                    availableNoiseReductionModes.contains(CaptureRequest.NOISE_REDUCTION_MODE_OFF) -> CaptureRequest.NOISE_REDUCTION_MODE_OFF
+                    availableNoiseReductionModes.contains(CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL) -> CaptureRequest.NOISE_REDUCTION_MODE_MINIMAL
+                    availableNoiseReductionModes.contains(CaptureRequest.NOISE_REDUCTION_MODE_FAST) -> CaptureRequest.NOISE_REDUCTION_MODE_FAST
+                    else -> null
+                }
+                neutralNoiseReductionMode?.let { builder.set(CaptureRequest.NOISE_REDUCTION_MODE, it) }
+                return
+            }
+
             val isBurst = currentState.useMFNR || currentState.useMFSR
             val effectiveEdgeLevel = if (isBurst && edgeLevel == 2) 1 else edgeLevel
             val edgeMode = when (effectiveEdgeLevel) {

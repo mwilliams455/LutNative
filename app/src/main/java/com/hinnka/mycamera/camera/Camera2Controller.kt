@@ -1778,6 +1778,16 @@ class Camera2Controller(private val context: Context) {
     }
 
     private fun applyToneMapSettings(builder: CaptureRequest.Builder, state: CameraState, isCapture: Boolean) {
+        if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture &&
+            availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_FAST)
+        ) {
+            // LUT-Native capture v3:
+            // Keep normal non-linear/display rendering, but avoid HIGH_QUALITY tonemapping that can
+            // create a finished/cooked base before LUT processing.
+            builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST)
+            return
+        }
+
         val linearizePreviewInput = state.fixTonemapPreview && !isCapture
         when (sanitizeTonemapMode(state.tonemapMode)) {
             "FAST" -> {
@@ -2005,9 +2015,9 @@ class Camera2Controller(private val context: Context) {
             val currentState = _state.value
 
             if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture) {
-                // LUT-Native capture v2:
-                // Keep normal camera tonemapping/exposure behavior, but avoid extra HAL sharpening/denoise
-                // before the LUT/export path. The v1 linear tonemap was too dark/crushed.
+                // LUT-Native capture v3:
+                // Keep normal exposure and tonemapped output, but avoid extra HAL sharpening/denoise
+                // before the LUT/export path.
                 val neutralEdgeMode = when {
                     availableEdgeModes.contains(CaptureRequest.EDGE_MODE_OFF) -> CaptureRequest.EDGE_MODE_OFF
                     availableEdgeModes.contains(CaptureRequest.EDGE_MODE_FAST) -> CaptureRequest.EDGE_MODE_FAST

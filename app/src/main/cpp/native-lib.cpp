@@ -1477,14 +1477,15 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v8b - Shadow Anchor Hybrid.
+// LUT-Native base neutralizer v9 - Highlight Chroma Guard.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v8b keeps the v8 shadow/highlight anchor but restores a little color and warmth from v7:
+// v9 keeps the v8b shadow/midtone balance but adds a small highlight chroma guard for LUT stability:
 // - less milky lift than v7
 // - deeper lower mids / stronger shadow anchor
-// - stronger highlight restraint
+// - slightly stronger highlight restraint
 // - same shadow chroma cleanup
+// - new highlight chroma damping to stop bright skin/screens from going hot under LUTs
 // - same tiny midtone warmth protection
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
 static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.91f;
@@ -1493,7 +1494,8 @@ static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.56f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
 static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.012f;
 static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.034f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.068f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.074f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.92f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 
 static inline float lutNativeClamp01(float v) {
@@ -1532,11 +1534,15 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   float shadowWeight = lutNativeClamp01((LUT_NATIVE_SHADOW_CHROMA_THRESHOLD - yNeutral) / LUT_NATIVE_SHADOW_CHROMA_THRESHOLD);
   shadowWeight = shadowWeight * shadowWeight;
 
-  const float saturation = lutNativeMix(
+  float saturation = lutNativeMix(
       LUT_NATIVE_BASE_SATURATION,
       LUT_NATIVE_SHADOW_SATURATION,
       shadowWeight
   );
+
+  // LUTs tend to push already-bright skin and screen-lit areas too hard.
+  // Keep midtone color intact, but gently reduce chroma in the top stop.
+  saturation *= lutNativeMix(1.0f, LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE, highlightWeight);
 
   const float dr = r - y;
   const float dg = g - y;

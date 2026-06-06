@@ -1781,9 +1781,7 @@ class Camera2Controller(private val context: Context) {
         if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture &&
             availableTonemapModes.contains(CaptureRequest.TONEMAP_MODE_FAST)
         ) {
-            // LUT-Native capture v3:
-            // Keep normal non-linear/display rendering, but avoid HIGH_QUALITY tonemapping that can
-            // create a finished/cooked base before LUT processing.
+            // LUT-Native capture v4: avoid high-quality/cooked still tonemap.
             builder.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST)
             return
         }
@@ -1873,9 +1871,12 @@ class Camera2Controller(private val context: Context) {
             val gains = kelvinToRggbGains(state.awbTemperature)
             builder.set(CaptureRequest.COLOR_CORRECTION_GAINS, gains)
         } else {
-            // 自动白平衡：拍照优先高质量色彩校正，预览维持快速路径
+            // LUT-Native capture v4: avoid HIGH_QUALITY color correction for stills.
+            // HIGH_QUALITY often gives a finished/cooked JPEG-like base before our LUT path.
             if (isManualPostProcessingSupported) {
-                val colorCorrectionMode = if (isCapture && state.captureMode == CaptureMode.PHOTO) {
+                val colorCorrectionMode = if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture && state.captureMode == CaptureMode.PHOTO) {
+                    CaptureRequest.COLOR_CORRECTION_MODE_FAST
+                } else if (isCapture && state.captureMode == CaptureMode.PHOTO) {
                     CaptureRequest.COLOR_CORRECTION_MODE_HIGH_QUALITY
                 } else {
                     CaptureRequest.COLOR_CORRECTION_MODE_FAST
@@ -2015,9 +2016,8 @@ class Camera2Controller(private val context: Context) {
             val currentState = _state.value
 
             if (LUT_NATIVE_CAPTURE_NEUTRAL && isCapture) {
-                // LUT-Native capture v3:
-                // Keep normal exposure and tonemapped output, but avoid extra HAL sharpening/denoise
-                // before the LUT/export path.
+                // LUT-Native capture v4:
+                // Keep normal exposure, but avoid HAL sharpening/denoise before LUT/export.
                 val neutralEdgeMode = when {
                     availableEdgeModes.contains(CaptureRequest.EDGE_MODE_OFF) -> CaptureRequest.EDGE_MODE_OFF
                     availableEdgeModes.contains(CaptureRequest.EDGE_MODE_FAST) -> CaptureRequest.EDGE_MODE_FAST
@@ -2091,6 +2091,12 @@ class Camera2Controller(private val context: Context) {
         isCapture: Boolean
     ) {
         if (!isCapture || state.captureMode != CaptureMode.PHOTO) {
+            applyFastStillPostProcessingSettings(builder)
+            return
+        }
+
+        if (LUT_NATIVE_CAPTURE_NEUTRAL) {
+            // LUT-Native capture v4: avoid high-quality aberration/hot-pixel/shading/distortion passes.
             applyFastStillPostProcessingSettings(builder)
             return
         }
@@ -3868,6 +3874,7 @@ class Camera2Controller(private val context: Context) {
     }
 
     private fun shouldUseP3ColorSpace(): Boolean {
+        if (LUT_NATIVE_CAPTURE_NEUTRAL) return false
         return _state.value.isP3Supported && _state.value.useP3ColorSpace
     }
 

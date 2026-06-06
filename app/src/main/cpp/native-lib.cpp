@@ -1477,10 +1477,10 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v8 - Shadow Anchor.
+// LUT-Native base neutralizer v8b - Shadow Anchor Hybrid.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v8 is focused on anchoring shadows and adding a little more density to the no-LUT base:
+// v8b keeps the v8 shadow/highlight anchor but restores a little color and warmth from v7:
 // - less milky lift than v7
 // - deeper lower mids / stronger shadow anchor
 // - stronger highlight restraint
@@ -1488,13 +1488,13 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 // - same tiny midtone warmth protection
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
 static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.91f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.75f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.55f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.76f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.56f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
 static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.012f;
 static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.034f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.068f;
-static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.010f;
+static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));

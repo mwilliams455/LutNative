@@ -36,6 +36,8 @@ import kotlin.math.sqrt
  * 所有 GPU 操作在独立单线程完成，确保 EGL 上下文线程安全
  */
 class LutImageProcessor {
+
+    private val lutNativeModeEnabled: Boolean = true
     // 单线程调度器，确保所有 EGL 操作在同一线程
     private val glDispatcher = Executors.newSingleThreadExecutor { r ->
         Thread(r, "LutImageProcessor-GL").apply { isDaemon = true }
@@ -97,21 +99,6 @@ class LutImageProcessor {
 
     private var isInitialized = false
 
-    companion object {
-        /**
-         * Experimental hardcoded LUT-native mode for the LutNative fork.
-         *
-         * When enabled, stacked baseline + creative rendering is collapsed into a
-         * single selected LUT pass with recipe, pre-LUT denoise, chroma denoise,
-         * and sharpening disabled. This prevents the image from being processed
-         * once by the app and then processed again by the LUT.
-         *
-         * This is intentionally hardcoded for the first proof-of-concept build.
-         * Once output is validated on-device, it should become a real user setting.
-         */
-        private const val LUT_NATIVE_MODE = true
-    }
-
     // Uniform 位置
     private var uImageTextureLoc = 0
     private var uLutTextureLoc = 0
@@ -167,14 +154,14 @@ class LutImageProcessor {
             // 获取 EGL Display
             eglDisplay = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
             if (eglDisplay == EGL14.EGL_NO_DISPLAY) {
-                PLog.e("LutNativeMode", "Unable to get EGL display")
+                PLog.e(TAG, "Unable to get EGL display")
                 return false
             }
 
             // 初始化 EGL
             val version = IntArray(2)
             if (!EGL14.eglInitialize(eglDisplay, version, 0, version, 1)) {
-                PLog.e("LutNativeMode", "Unable to initialize EGL")
+                PLog.e(TAG, "Unable to initialize EGL")
                 return false
             }
 
@@ -192,7 +179,7 @@ class LutImageProcessor {
             val configs = arrayOfNulls<EGLConfig>(1)
             val numConfigs = IntArray(1)
             if (!EGL14.eglChooseConfig(eglDisplay, configAttribs, 0, configs, 0, 1, numConfigs, 0)) {
-                PLog.e("LutNativeMode", "Unable to choose EGL config")
+                PLog.e(TAG, "Unable to choose EGL config")
                 return false
             }
 
@@ -205,7 +192,7 @@ class LutImageProcessor {
             )
             eglContext = EGL14.eglCreateContext(eglDisplay, config, EGL14.EGL_NO_CONTEXT, contextAttribs, 0)
             if (eglContext == EGL14.EGL_NO_CONTEXT) {
-                PLog.e("LutNativeMode", "Unable to create EGL context")
+                PLog.e(TAG, "Unable to create EGL context")
                 return false
             }
 
@@ -217,13 +204,13 @@ class LutImageProcessor {
             )
             eglSurface = EGL14.eglCreatePbufferSurface(eglDisplay, config, surfaceAttribs, 0)
             if (eglSurface == EGL14.EGL_NO_SURFACE) {
-                PLog.e("LutNativeMode", "Unable to create EGL surface")
+                PLog.e(TAG, "Unable to create EGL surface")
                 return false
             }
 
             // 激活上下文
             if (!EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)) {
-                PLog.e("LutNativeMode", "Unable to make EGL current")
+                PLog.e(TAG, "Unable to make EGL current")
                 return false
             }
 
@@ -234,11 +221,11 @@ class LutImageProcessor {
             initBuffers()
 
             isInitialized = true
-            PLog.d("LutNativeMode", "LutImageProcessor initialized")
+            PLog.d(TAG, "LutImageProcessor initialized")
             return true
 
         } catch (e: Exception) {
-            PLog.e("LutNativeMode", "Failed to initialize", e)
+            PLog.e(TAG, "Failed to initialize", e)
             return false
         }
     }
@@ -274,15 +261,15 @@ class LutImageProcessor {
             }
         }
 
-        // 提取色彩配方参数
-        val effectiveRecipeParams = colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
+        // LUT-Native Mode: let the selected LUT carry the look instead of stacking recipe/NR/sharpening first.
+        val effectiveRecipeParams = if (lutNativeModeEnabled) null else colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
         val redHalation = effectiveRecipeParams?.redHalation ?: 0f
 
-        // 后期处理参数
-        val sharpening: Float = sharpeningValue
-        val noiseReduction: Float = noiseReductionValue
-        val chromaNoiseReduction: Float = chromaNoiseReductionValue
+        // LUT-Native Mode: keep the pre-LUT base neutral.
+        val sharpening: Float = if (lutNativeModeEnabled) 0f else sharpeningValue
+        val noiseReduction: Float = if (lutNativeModeEnabled) 0f else noiseReductionValue
+        val chromaNoiseReduction: Float = if (lutNativeModeEnabled) 0f else chromaNoiseReductionValue
 
         // 激活上下文
         EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)
@@ -354,22 +341,21 @@ class LutImageProcessor {
         noiseReductionValue: Float = 0f,
         chromaNoiseReductionValue: Float = 0f,
     ): Bitmap {
-        if (LUT_NATIVE_MODE) {
-            val selectedLut = creativeLayer?.lutConfig ?: baselineLayer?.lutConfig
+        if (lutNativeModeEnabled) {
+            val layer = creativeLayer ?: baselineLayer
             return applyLut(
                 argbData = argbData,
                 width = width,
                 height = height,
                 colorSpace = colorSpace,
                 isHlgInput = isHlgInput,
-                lutConfig = selectedLut,
+                lutConfig = layer?.lutConfig,
                 colorRecipeParams = null,
                 sharpeningValue = 0f,
                 noiseReductionValue = 0f,
                 chromaNoiseReductionValue = 0f
             )
         }
-
         val hasBaseline = baselineLayer?.lutConfig != null || baselineLayer?.colorRecipeParams != null
         val hasCreative = creativeLayer?.lutConfig != null || creativeLayer?.colorRecipeParams != null
         return when {
@@ -446,15 +432,15 @@ class LutImageProcessor {
             }
         }
 
-        // 提取色彩配方参数
-        val effectiveRecipeParams = colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
+        // LUT-Native Mode: let the selected LUT carry the look instead of stacking recipe/NR/sharpening first.
+        val effectiveRecipeParams = if (lutNativeModeEnabled) null else colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
         val redHalation = effectiveRecipeParams?.redHalation ?: 0f
 
-        // 后期处理参数（仅在软件处理模式下生效）
-        val sharpening: Float = sharpeningValue
-        val noiseReduction: Float = noiseReductionValue
-        val chromaNoiseReduction: Float = chromaNoiseReductionValue
+        // LUT-Native Mode: keep the pre-LUT base neutral.
+        val sharpening: Float = if (lutNativeModeEnabled) 0f else sharpeningValue
+        val noiseReduction: Float = if (lutNativeModeEnabled) 0f else noiseReductionValue
+        val chromaNoiseReduction: Float = if (lutNativeModeEnabled) 0f else chromaNoiseReductionValue
 
         // 确保上下文激活
         EGL14.eglMakeCurrent(eglDisplay, eglSurface, eglSurface, eglContext)
@@ -526,19 +512,18 @@ class LutImageProcessor {
         noiseReductionValue: Float = 0f,
         chromaNoiseReductionValue: Float = 0f,
     ): Bitmap {
-        if (LUT_NATIVE_MODE) {
-            val selectedLut = creativeLayer?.lutConfig ?: baselineLayer?.lutConfig
+        if (lutNativeModeEnabled) {
+            val layer = creativeLayer ?: baselineLayer
             return applyLut(
                 bitmap = bitmap,
                 isHlgInput = isHlgInput,
-                lutConfig = selectedLut,
+                lutConfig = layer?.lutConfig,
                 colorRecipeParams = null,
                 sharpeningValue = 0f,
                 noiseReductionValue = 0f,
                 chromaNoiseReductionValue = 0f
             )
         }
-
         val hasBaseline = baselineLayer?.lutConfig != null || baselineLayer?.colorRecipeParams != null
         val hasCreative = creativeLayer?.lutConfig != null || creativeLayer?.colorRecipeParams != null
         return when {
@@ -912,7 +897,7 @@ class LutImageProcessor {
 
         val status = GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER)
         if (status != GLES30.GL_FRAMEBUFFER_COMPLETE) {
-            PLog.e("LutNativeMode", "Framebuffer not complete: $status")
+            PLog.e(TAG, "Framebuffer not complete: $status")
         }
 
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
@@ -995,7 +980,7 @@ class LutImageProcessor {
 
         val error = GLES30.glGetError()
         if (error != GLES30.GL_NO_ERROR) {
-            PLog.e("LutNativeMode", "glTexImage2D error: $error")
+            PLog.e(TAG, "glTexImage2D error: $error")
         }
     }
 
@@ -1104,7 +1089,8 @@ class LutImageProcessor {
         bitmapDenoiseBacktransformProgram = compileComputeProgram(DenoiseProfileShaders.BACKTRANSFORM_Y0U0V0, "BitmapDenoise_Backtransform")
         bitmapDenoisePassthroughProgram = createFragmentProgram(IMAGE_VERTEX_SHADER, TEXTURE_PASSTHROUGH_SHADER, "BitmapDenoise_Passthrough")
         bitmapChromaDenoiseProgram = createFragmentProgram(IMAGE_VERTEX_SHADER, ChromaDenoiseShaders.PASS_CHROMA_DENOISE, "BitmapChromaDenoise_BM3DPass0")
-        PLog.d("LutNativeMode",
+        PLog.d(
+            TAG,
             "Bitmap denoiseprofile programs initialized: pre=$bitmapDenoisePreconditionProgram " +
                 "decompose=$bitmapDenoiseDecomposeProgram synth=$bitmapDenoiseSynthesizeProgram " +
                 "reduce1=$bitmapDenoiseReduceFirstProgram reduce2=$bitmapDenoiseReduceSecondProgram " +
@@ -1132,7 +1118,8 @@ class LutImageProcessor {
         halationBlurVProgram = createProgram(vShader, HDF_BLUR_V_SHADER)
         GLES30.glDeleteShader(vShader)
 
-        PLog.d("LutNativeMode",
+        PLog.d(
+            TAG,
             "HDF/Halation programs initialized"
         )
     }
@@ -1171,7 +1158,7 @@ class LutImageProcessor {
 
             val status = GLES30.glCheckFramebufferStatus(GLES30.GL_FRAMEBUFFER)
             if (status != GLES30.GL_FRAMEBUFFER_COMPLETE) {
-                PLog.e("LutNativeMode", "Bitmap denoiseprofile FBO $i incomplete: $status")
+                PLog.e(TAG, "Bitmap denoiseprofile FBO $i incomplete: $status")
             }
         }
         setupBitmapDenoiseResources(width, height)
@@ -1755,7 +1742,7 @@ class LutImageProcessor {
     private fun checkGlError(op: String) {
         val error = GLES30.glGetError()
         if (error != GLES30.GL_NO_ERROR) {
-            PLog.e("LutNativeMode", "$op: glError $error")
+            PLog.e(TAG, "$op: glError $error")
         }
     }
 
@@ -1796,7 +1783,7 @@ class LutImageProcessor {
         GLES30.glGetShaderiv(shader, GLES30.GL_COMPILE_STATUS, compiled, 0)
         if (compiled[0] == 0) {
             val error = GLES30.glGetShaderInfoLog(shader)
-            PLog.e("LutNativeMode", "Shader compilation failed: $error")
+            PLog.e(TAG, "Shader compilation failed: $error")
             GLES30.glDeleteShader(shader)
             return 0
         }
@@ -1814,7 +1801,7 @@ class LutImageProcessor {
         val linked = IntArray(1)
         GLES30.glGetProgramiv(program, GLES30.GL_LINK_STATUS, linked, 0)
         if (linked[0] == 0) {
-            PLog.e("LutNativeMode", "Program $name linking failed: ${GLES30.glGetProgramInfoLog(program)}")
+            PLog.e(TAG, "Program $name linking failed: ${GLES30.glGetProgramInfoLog(program)}")
             GLES30.glDeleteProgram(program)
             GLES30.glDeleteShader(vShader)
             GLES30.glDeleteShader(fShader)
@@ -1832,7 +1819,7 @@ class LutImageProcessor {
         val compiled = IntArray(1)
         GLES31.glGetShaderiv(shader, GLES31.GL_COMPILE_STATUS, compiled, 0)
         if (compiled[0] == 0) {
-            PLog.e("LutNativeMode", "Compute shader $name compilation failed: ${GLES31.glGetShaderInfoLog(shader)}")
+            PLog.e(TAG, "Compute shader $name compilation failed: ${GLES31.glGetShaderInfoLog(shader)}")
             GLES31.glDeleteShader(shader)
             return 0
         }
@@ -1842,7 +1829,7 @@ class LutImageProcessor {
         val linked = IntArray(1)
         GLES31.glGetProgramiv(program, GLES31.GL_LINK_STATUS, linked, 0)
         if (linked[0] == 0) {
-            PLog.e("LutNativeMode", "Compute program $name linking failed: ${GLES31.glGetProgramInfoLog(program)}")
+            PLog.e(TAG, "Compute program $name linking failed: ${GLES31.glGetProgramInfoLog(program)}")
             GLES31.glDeleteProgram(program)
             GLES31.glDeleteShader(shader)
             return 0
@@ -1944,7 +1931,7 @@ class LutImageProcessor {
         EGL14.eglTerminate(eglDisplay)
 
         isInitialized = false
-        PLog.d("LutNativeMode", "LutImageProcessor released")
+        PLog.d(TAG, "LutImageProcessor released")
     }
 
     companion object {

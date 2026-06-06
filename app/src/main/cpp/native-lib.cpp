@@ -1477,17 +1477,18 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v5.
+// LUT-Native base neutralizer v6.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v5 keeps the shadow-weighted chroma cleanup from v4 but reduces the milky lift and restores
-// a little contrast/color for a more usable neutral camera base.
+// v6 keeps the v5 tone/chroma cleanup but adds tiny midtone warmth protection so tungsten scenes
+// are not pulled too far into cool/cyan clinical rendering.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
 static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.87f;
 static constexpr float LUT_NATIVE_BASE_SATURATION = 0.77f;
 static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.58f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
 static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.028f;
+static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.015f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1527,6 +1528,16 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   r = lutNativeClamp01(yNeutral + dr * saturation);
   g = lutNativeClamp01(yNeutral + dg * saturation);
   b = lutNativeClamp01(yNeutral + db * saturation);
+
+  // Tiny warmth protection in midtones only.
+  // This is intentionally weak: it should protect tungsten skin/wood warmth without creating a strong preset look.
+  float midtoneWeight = 1.0f - std::abs(yNeutral - 0.50f) * 2.0f;
+  midtoneWeight = lutNativeClamp01(midtoneWeight);
+  midtoneWeight = midtoneWeight * midtoneWeight;
+
+  const float warmBias = LUT_NATIVE_WARMTH_PROTECT_STRENGTH * midtoneWeight;
+  r = lutNativeClamp01(r * (1.0f + warmBias));
+  b = lutNativeClamp01(b * (1.0f - warmBias));
 }
 
 

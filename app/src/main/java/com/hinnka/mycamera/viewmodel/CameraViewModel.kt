@@ -234,13 +234,14 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val canStartShutterAnimation = _canStartShutterAnimation.asStateFlow()
 
     // LUT 相关状态
+    private val lutNativeForceNeutralProfile: Boolean = true
     var currentLutConfig: LutConfig? by mutableStateOf(null)
         private set
 
     var currentBaselineLutConfig: LutConfig? by mutableStateOf(null)
         private set
 
-    var currentLutId = MutableStateFlow("standard")
+    var currentLutId = MutableStateFlow("none")
         private set
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -357,6 +358,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun getMergedRecipeParams(recipe: ColorRecipeParams = currentRecipeParams.value): ColorRecipeParams {
+        if (lutNativeForceNeutralProfile) return ColorRecipeParams.DEFAULT
         return currentEffectParams.value.applyTo(recipe)
     }
 
@@ -1271,8 +1273,10 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                 cameraController.setVideoCodec(prefs.videoCodec)
                 cameraController.setMeteringMode(prefs.meteringMode)
 
-                // 应用保存的 LUT 配置
-                if (prefs.lutId != null) {
+                // LUT-Native test: do not auto-apply saved/default Standard LUT.
+                if (lutNativeForceNeutralProfile) {
+                    setLut(null, persist = false)
+                } else if (prefs.lutId != null) {
                     setLut(prefs.lutId)
                 } else {
                     // 如果没有保存的 LUT，使用配置文件中的默认 LUT（第一个）
@@ -1304,9 +1308,13 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
                     setAperture(prefs.defaultVirtualAperture)
                 }
             } else {
-                // 如果没有任何偏好设置，使用配置文件中的默认 LUT（第一个）
-                val defaultLut = availableLutList.firstOrNull { it.isDefault }
-                defaultLut?.let { setLut(it.id, persist = false) }
+                if (lutNativeForceNeutralProfile) {
+                    setLut(null, persist = false)
+                } else {
+                    // 如果没有任何偏好设置，使用配置文件中的默认 LUT（第一个）
+                    val defaultLut = availableLutList.firstOrNull { it.isDefault }
+                    defaultLut?.let { setLut(it.id, persist = false) }
+                }
             }
 
             _isInitialized.value = true
@@ -3581,7 +3589,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 BaselineColorCorrectionTarget.JPG
             }
-            val baselineMetadata = resolveBaselineMetadata(baselineTarget, userPrefs)
+            val baselineMetadata = if (lutNativeForceNeutralProfile) {
+                null
+            } else {
+                resolveBaselineMetadata(baselineTarget, userPrefs)
+            }
             val effectiveRawAutoExposure = resolveEffectiveRawAutoExposure(
                 userPrefs = userPrefs,
                 isRawCapture = baselineTarget == BaselineColorCorrectionTarget.RAW,
@@ -3864,7 +3876,11 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
             } else {
                 BaselineColorCorrectionTarget.JPG
             }
-            val baselineMetadata = resolveBaselineMetadata(baselineTarget, userPrefs)
+            val baselineMetadata = if (lutNativeForceNeutralProfile) {
+                null
+            } else {
+                resolveBaselineMetadata(baselineTarget, userPrefs)
+            }
             val effectiveRawAutoExposure = resolveEffectiveRawAutoExposure(
                 userPrefs = userPrefs,
                 isRawCapture = baselineTarget == BaselineColorCorrectionTarget.RAW,

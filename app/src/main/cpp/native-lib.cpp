@@ -1477,24 +1477,21 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-
-// LUT-Native base neutralizer v23 - Indoor Subject Presence / Bright Fabric Guard.
-// The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
-// This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v23 keeps the v22 density anchor but makes the pop more selective:
-// - reduces global face-shadow opening so the frame does not go airy
-// - adds a midtone subject-presence curve for hair/fur/fabric shape
-// - slightly strengthens the cyan guard for blue walls/shirts
-// - adds a bright-fabric chroma trim so pink/cyan clothing does not dominate
-// - keeps the v22 skin/tungsten safety behavior
+// LUT-Native base neutralizer v24 - Backlight-aware subject refinement.
+// Target: keep v23 density/pop, but prevent hard window backlight from burying faces.
+// Notes:
+// - This block is still per-pixel, so the backlight helper is a local luma/chroma approximation,
+//   not a full frame-average scene detector.
+// - M9 remains the density anchor.
+// - Natural/Kodak get protection from becoming globally pale/grey by avoiding broad shadow lift.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.944f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.943f;
 static constexpr float LUT_NATIVE_BASE_SATURATION = 0.602f;
 static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.410f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
 static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.004f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.049f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.067f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.048f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.068f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.825f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
@@ -1503,9 +1500,10 @@ static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.010f;
 static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.018f;
-static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.008f;
+static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.010f;
 static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.010f;
-static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.012f;
+static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.014f;
+static constexpr float LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH = 0.012f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1521,47 +1519,26 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   }
 
   const float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+  const float maxRgb = std::max(r, std::max(g, b));
+  const float minRgb = std::min(r, std::min(g, b));
+  const float chroma = maxRgb - minRgb;
 
-  // Reduce baked contrast around middle gray, then apply a controlled black lift.
-  // v22 is closer to v19 density than v20, but uses a selective face-shadow opener below.
+  // V24 keeps the v23 density family, with a tiny ease in lower mids for face grace.
   float yNeutral = (y - 0.5f) * LUT_NATIVE_BASE_CONTRAST + 0.5f;
   yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
   yNeutral = lutNativeClamp01(yNeutral);
 
-  // Add density mainly in lower mids. v22 restores more of v19's bite and body.
+  // Lower-mid body: still dense, but slightly less heavy than v23 in face/shirt shadows.
   float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.34f) / 0.34f;
   lowerMidWeight = lutNativeClamp01(lowerMidWeight);
   lowerMidWeight = lowerMidWeight * lowerMidWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_LOWER_MID_DENSITY * lowerMidWeight));
 
-  // Firmer highlight shoulder. v22 reduces the pale/airy look from v20 while keeping full-strength LUTs controlled.
+  // Highlight shoulder: softened from v23 so windows/ceilings retain a little smoother rolloff.
   float highlightWeight = lutNativeClamp01((yNeutral - 0.62f) / 0.38f);
   highlightWeight = highlightWeight * highlightWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_HIGHLIGHT_SHOULDER * highlightWeight * (1.0f - yNeutral)));
 
-  // Indoor mid-pop: luma-only lift in true midtones to restore face/shirt life.
-  // v22 returns this to v19 strength, then protects only warm face shadows below.
-  float midtoneWeight = 1.0f - std::abs(yNeutral - 0.50f) * 2.0f;
-  midtoneWeight = lutNativeClamp01(midtoneWeight);
-  midtoneWeight = midtoneWeight * midtoneWeight;
-  yNeutral = lutNativeClamp01(yNeutral + LUT_NATIVE_INDOOR_MID_POP_STRENGTH * midtoneWeight * (1.0f - highlightWeight) * (1.0f - yNeutral));
-
-  // Face-shadow opener. This is deliberately selective: restore v19-like global density,
-  // then open only warm lower-mid skin-ish shadows so faces do not become buried/ruddy.
-  float faceWarmMask = lutNativeClamp01(((r - b) - 0.020f) / 0.18f);
-  faceWarmMask = faceWarmMask * faceWarmMask;
-  float faceShadowLumaMask = lutNativeClamp01(1.0f - std::abs(yNeutral - 0.36f) / 0.22f);
-  faceShadowLumaMask = faceShadowLumaMask * faceShadowLumaMask;
-  const float faceShadowOpen = LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH * faceWarmMask * faceShadowLumaMask * (1.0f - highlightWeight);
-  yNeutral = lutNativeClamp01(yNeutral + faceShadowOpen * (1.0f - yNeutral));
-
-  // Subject presence. This is a tiny luma-only midtone S-curve: it adds shape to hair,
-  // fur, fabric and facial structure without globally raising exposure or crushing highlights.
-  const float subjectPresence = LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH * midtoneWeight * (1.0f - highlightWeight * 0.70f);
-  yNeutral = lutNativeClamp01(0.5f + (yNeutral - 0.5f) * (1.0f + subjectPresence));
-
-  // Reduce baked chroma while preserving hue relationships.
-  // In shadows, damp chroma more strongly to suppress green/magenta speckle without blurring luma detail.
   float shadowWeight = lutNativeClamp01((LUT_NATIVE_SHADOW_CHROMA_THRESHOLD - yNeutral) / LUT_NATIVE_SHADOW_CHROMA_THRESHOLD);
   shadowWeight = shadowWeight * shadowWeight;
 
@@ -1571,9 +1548,20 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
       shadowWeight
   );
 
-  // LUTs tend to push already-bright skin and screen-lit areas too hard.
-  // Keep midtone color intact, but gently reduce chroma in the top stop.
+  // Reduce chroma in highlights a touch so 100% LUTs do not make bright windows/fabrics look synthetic.
   saturation *= lutNativeMix(1.0f, LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE, highlightWeight);
+
+  // Cyan-blue guard: keeps blue walls/shirts/window spill from getting too clean and phone-like.
+  const float cyanWeight = lutNativeClamp01(((g + b) * 0.5f - r) * 2.5f) * lutNativeClamp01((yNeutral - 0.18f) / 0.52f);
+  saturation *= (1.0f - LUT_NATIVE_CYAN_GUARD_STRENGTH * cyanWeight);
+
+  // Bright fabric/toy chroma trim: local only, mostly for high-chroma mid/high areas such as pink shirts.
+  const float brightChromaWeight = lutNativeClamp01((yNeutral - 0.42f) / 0.36f) * lutNativeClamp01((chroma - 0.14f) / 0.30f);
+  saturation *= (1.0f - LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM * brightChromaWeight);
+
+  // Green separation: helps grass/foliage avoid grey collapse without making greens neon.
+  const float greenWeight = lutNativeClamp01((g - std::max(r, b)) * 3.0f) * lutNativeClamp01((yNeutral - 0.18f) / 0.55f);
+  saturation *= (1.0f + LUT_NATIVE_GREEN_SEPARATION_STRENGTH * greenWeight);
 
   const float dr = r - y;
   const float dg = g - y;
@@ -1583,73 +1571,69 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   g = lutNativeClamp01(yNeutral + dg * saturation);
   b = lutNativeClamp01(yNeutral + db * saturation);
 
-  // Recompute simple masks on the post-neutralized color.
-  const float yPost = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-  const float warmDelta = r - b;
-  float warmPixelMask = lutNativeClamp01((warmDelta - 0.035f) / 0.22f);
-  warmPixelMask = warmPixelMask * warmPixelMask;
+  // Recompute after base sat/luma changes.
+  float y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
 
-  // Extra guard for the orange/yellow band most likely to turn waxy under tungsten.
-  float orangeMask = lutNativeClamp01(((r - g) + 0.06f) / 0.18f);
-  orangeMask *= warmPixelMask;
+  // Midtone subject presence: not a global brightness lift. It subtly separates midtones from flat phone HDR.
+  float midPresence = 1.0f - std::abs(y2 - 0.46f) * 2.4f;
+  midPresence = lutNativeClamp01(midPresence);
+  midPresence = midPresence * midPresence;
+  const float presence = LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH * midPresence;
+  r = lutNativeClamp01((r - 0.5f) * (1.0f + presence) + 0.5f);
+  g = lutNativeClamp01((g - 0.5f) * (1.0f + presence) + 0.5f);
+  b = lutNativeClamp01((b - 0.5f) * (1.0f + presence) + 0.5f);
 
-  const float tungstenGuard = midtoneWeight * orangeMask;
-  const float warmProtect = LUT_NATIVE_WARMTH_PROTECT_STRENGTH * tungstenGuard;
-  const float tungstenProtect = LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH * tungstenGuard;
+  y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
 
-  // Preserve warmth, but stop the red/yellow channel from becoming a second LUT on top of the LUT.
-  r = lutNativeClamp01(r * (1.0f - warmProtect));
-  g = lutNativeClamp01(g * (1.0f + tungstenProtect * 0.10f));
-  b = lutNativeClamp01(b * (1.0f + tungstenProtect * 0.55f));
+  // Warm skin/fur approximation: local, conservative, and only active in low/mid luma.
+  float warmSubject = lutNativeClamp01((r - b) * 2.6f) * lutNativeClamp01((r - g + 0.08f) * 3.0f);
+  warmSubject *= lutNativeClamp01((0.72f - y2) / 0.60f);
 
-  // Skin/lower-mid orange compression. Kept near v18/v19 strength so added density does not
-  // turn faces brown/orange at 100% LUT.
-  float skinLumaMask = lutNativeClamp01(1.0f - std::abs(yPost - 0.48f) * 2.25f);
-  skinLumaMask = skinLumaMask * skinLumaMask;
-  float skinOrangeMask = orangeMask * skinLumaMask;
-  const float skinCompress = LUT_NATIVE_SKIN_ORANGE_COMPRESS * skinOrangeMask;
-  r = lutNativeClamp01(r * (1.0f - skinCompress));
-  b = lutNativeClamp01(b * (1.0f + skinCompress * 0.35f));
+  // Face-shadow opener: restores a little air in dark warm subject tones without lifting the whole frame.
+  float faceShadow = warmSubject * lutNativeClamp01((0.50f - y2) / 0.38f);
+  const float faceOpen = LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH * faceShadow;
+  r = lutNativeClamp01(r + faceOpen * 1.00f);
+  g = lutNativeClamp01(g + faceOpen * 0.78f);
+  b = lutNativeClamp01(b + faceOpen * 0.52f);
 
-  // Bright fabric guard. Strong LUTs can make saturated shirts/toys steal the frame indoors.
-  // Compress only high-chroma mid/high values, while mostly excluding skin-orange regions.
-  const float maxRgb = std::max(r, std::max(g, b));
-  const float minRgb = std::min(r, std::min(g, b));
-  float brightFabricMask = lutNativeClamp01(((maxRgb - minRgb) - 0.16f) / 0.28f);
-  brightFabricMask *= brightFabricMask;
-  brightFabricMask *= lutNativeClamp01((yPost - 0.34f) / 0.40f);
-  brightFabricMask *= (1.0f - skinOrangeMask * 0.65f);
-  const float brightFabricScale = 1.0f - LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM * brightFabricMask;
-  r = lutNativeClamp01(yNeutral + (r - yNeutral) * brightFabricScale);
-  g = lutNativeClamp01(yNeutral + (g - yNeutral) * brightFabricScale);
-  b = lutNativeClamp01(yNeutral + (b - yNeutral) * brightFabricScale);
+  // Backlit face helper: a stronger local version for very dark warm subject pixels.
+  // This is intentionally not a broad shadow lift; neutral/dark furniture and black fur stay anchored.
+  y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+  float backlitWarmShadow = warmSubject * lutNativeClamp01((0.34f - y2) / 0.24f);
+  const float backlitOpen = LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH * backlitWarmShadow;
+  r = lutNativeClamp01(r + backlitOpen * 1.00f);
+  g = lutNativeClamp01(g + backlitOpen * 0.74f);
+  b = lutNativeClamp01(b + backlitOpen * 0.48f);
 
-  // Warm chroma compression only on warm midtones/highlights to reduce waxy skin and creamy white fur.
-  const float warmChromaScale = lutNativeMix(
-      1.0f,
-      LUT_NATIVE_TUNGSTEN_CHROMA_SCALE,
-      lutNativeClamp01(tungstenGuard + highlightWeight * warmPixelMask * 0.50f)
-  );
-  r = lutNativeClamp01(yNeutral + (r - yNeutral) * warmChromaScale);
-  g = lutNativeClamp01(yNeutral + (g - yNeutral) * warmChromaScale);
-  b = lutNativeClamp01(yNeutral + (b - yNeutral) * warmChromaScale);
+  // Skin/fur orange compression: prevents the denser v19/v23 curve from turning warm subjects brown/orange.
+  y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+  float orangeBuild = warmSubject * lutNativeClamp01((r - g) * 3.0f) * lutNativeClamp01((y2 - 0.18f) / 0.46f);
+  const float orangeCompress = LUT_NATIVE_SKIN_ORANGE_COMPRESS * orangeBuild;
+  r = lutNativeClamp01(lutNativeMix(r, y2, orangeCompress));
+  g = lutNativeClamp01(lutNativeMix(g, y2, orangeCompress * 0.35f));
 
-  // Blue/cyan digital guard. Gentle suppression of electric cyan from windows/shirts without killing blues.
-  float cyanMask = lutNativeClamp01(((b + g) * 0.5f - r - 0.035f) / 0.20f);
-  cyanMask = cyanMask * cyanMask;
-  const float cyanGuard = LUT_NATIVE_CYAN_GUARD_STRENGTH * cyanMask * (1.0f - shadowWeight * 0.50f);
-  g = lutNativeClamp01(g * (1.0f - cyanGuard * 0.55f));
-  b = lutNativeClamp01(b * (1.0f - cyanGuard));
-  r = lutNativeClamp01(r * (1.0f + cyanGuard * 0.20f));
+  // Tungsten guard: reduces warm chroma stacking under low/mid luma warm light while keeping warmth.
+  y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+  float tungstenWeight = warmSubject * lutNativeClamp01((0.66f - y2) / 0.50f);
+  const float tungstenScale = lutNativeMix(1.0f, LUT_NATIVE_TUNGSTEN_CHROMA_SCALE, LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH * tungstenWeight);
+  const float tr = r - y2;
+  const float tg = g - y2;
+  const float tb = b - y2;
+  r = lutNativeClamp01(y2 + tr * tungstenScale);
+  g = lutNativeClamp01(y2 + tg * tungstenScale);
+  b = lutNativeClamp01(y2 + tb * tungstenScale);
 
-  // Outdoor green separation. Small masked push so grass/foliage keeps life under overcast light
-  // without making greens neon.
-  float greenMask = lutNativeClamp01((g - std::max(r, b) - 0.015f) / 0.18f);
-  greenMask = greenMask * greenMask;
-  const float greenLift = LUT_NATIVE_GREEN_SEPARATION_STRENGTH * greenMask * (1.0f - highlightWeight * 0.65f);
-  g = lutNativeClamp01(g * (1.0f + greenLift));
-  r = lutNativeClamp01(r * (1.0f + greenLift * 0.10f));
+  // Tiny warmth protection in true midtones only.
+  float midtoneWeight = 1.0f - std::abs(y2 - 0.50f) * 2.0f;
+  midtoneWeight = lutNativeClamp01(midtoneWeight);
+  midtoneWeight = midtoneWeight * midtoneWeight;
+
+  const float warmBias = LUT_NATIVE_WARMTH_PROTECT_STRENGTH * midtoneWeight;
+  r = lutNativeClamp01(r * (1.0f + warmBias));
+  b = lutNativeClamp01(b * (1.0f - warmBias));
 }
+
+
 
 /**
  * 处理 YUV_420_888 或 P010 图像：旋转、裁切、转换为 RGBA16

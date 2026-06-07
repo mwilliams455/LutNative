@@ -272,6 +272,7 @@ class LutManager(private val context: Context) {
                 else -> ColorRecipeParams.DEFAULT
             }
         }
+    }
 
     // LUT 缓存
     private val lutCache = LruCache<String, LutConfig>(CACHE_SIZE)

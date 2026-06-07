@@ -1478,31 +1478,34 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 
 
 
-// LUT-Native base neutralizer v22 - v19 Density + Face Shadow Protection.
+// LUT-Native base neutralizer v23 - Indoor Subject Presence / Bright Fabric Guard.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v22 returns closer to v19's density/pop direction, but avoids v19's heavy face shadows:
-// - restores stronger lower-mid body and color life than v20/v21
-// - adds a masked face-shadow opener so skin is not globally lifted
-// - keeps tungsten, cyan, skin-orange, indoor-mid-pop and green-separation guards
-// - aims for full 100% LUT use without the v20 airy/cyan phone-bright look
+// v23 keeps the v22 density anchor but makes the pop more selective:
+// - reduces global face-shadow opening so the frame does not go airy
+// - adds a midtone subject-presence curve for hair/fur/fabric shape
+// - slightly strengthens the cyan guard for blue walls/shirts
+// - adds a bright-fabric chroma trim so pink/cyan clothing does not dominate
+// - keeps the v22 skin/tungsten safety behavior
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.943f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.605f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.944f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.602f;
 static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.410f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.005f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.004f;
 static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.049f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.068f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.067f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.825f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
 static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.870f;
-static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.010f;
+static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.010f;
 static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.020f;
-static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.010f;
+static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.018f;
+static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.008f;
+static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.010f;
+static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.012f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1551,6 +1554,11 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   faceShadowLumaMask = faceShadowLumaMask * faceShadowLumaMask;
   const float faceShadowOpen = LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH * faceWarmMask * faceShadowLumaMask * (1.0f - highlightWeight);
   yNeutral = lutNativeClamp01(yNeutral + faceShadowOpen * (1.0f - yNeutral));
+
+  // Subject presence. This is a tiny luma-only midtone S-curve: it adds shape to hair,
+  // fur, fabric and facial structure without globally raising exposure or crushing highlights.
+  const float subjectPresence = LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH * midtoneWeight * (1.0f - highlightWeight * 0.70f);
+  yNeutral = lutNativeClamp01(0.5f + (yNeutral - 0.5f) * (1.0f + subjectPresence));
 
   // Reduce baked chroma while preserving hue relationships.
   // In shadows, damp chroma more strongly to suppress green/magenta speckle without blurring luma detail.
@@ -1602,6 +1610,19 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   const float skinCompress = LUT_NATIVE_SKIN_ORANGE_COMPRESS * skinOrangeMask;
   r = lutNativeClamp01(r * (1.0f - skinCompress));
   b = lutNativeClamp01(b * (1.0f + skinCompress * 0.35f));
+
+  // Bright fabric guard. Strong LUTs can make saturated shirts/toys steal the frame indoors.
+  // Compress only high-chroma mid/high values, while mostly excluding skin-orange regions.
+  const float maxRgb = std::max(r, std::max(g, b));
+  const float minRgb = std::min(r, std::min(g, b));
+  float brightFabricMask = lutNativeClamp01(((maxRgb - minRgb) - 0.16f) / 0.28f);
+  brightFabricMask *= brightFabricMask;
+  brightFabricMask *= lutNativeClamp01((yPost - 0.34f) / 0.40f);
+  brightFabricMask *= (1.0f - skinOrangeMask * 0.65f);
+  const float brightFabricScale = 1.0f - LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM * brightFabricMask;
+  r = lutNativeClamp01(yNeutral + (r - yNeutral) * brightFabricScale);
+  g = lutNativeClamp01(yNeutral + (g - yNeutral) * brightFabricScale);
+  b = lutNativeClamp01(yNeutral + (b - yNeutral) * brightFabricScale);
 
   // Warm chroma compression only on warm midtones/highlights to reduce waxy skin and creamy white fur.
   const float warmChromaScale = lutNativeMix(

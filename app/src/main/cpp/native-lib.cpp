@@ -1477,26 +1477,27 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v14 - 100% LUT Headroom + M9 Character Recovery.
+// LUT-Native base neutralizer v16 - 100% LUT Character Recovery.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v14 keeps v13 structure but creates more chroma headroom for 100% LUT use:
-// - slightly less pre-LUT color loading so 100% LUT behaves less like an overlay
-// - keeps/deepens tonal structure without returning to smartphone harshness
-// - eases lower-mid heaviness so skin is not buried in backlight
-// - stronger highlight/tungsten chroma protection for warm indoor scenes
+// v16 keeps v15's 100% LUT survivability, but adds back a little camera-like bite:
+// - slightly firmer tonal structure and lower-mid body than v15
+// - a small amount of extra color life without returning to overcooked phone saturation
+// - slightly deeper black anchoring to reduce the lifted/safe look
+// - retained tungsten protection, plus a very subtle cyan guard for blue/cyan digital cleanliness
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.925f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.56f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.38f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.935f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.57f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.39f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.008f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.041f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.076f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.80f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.006f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.043f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.074f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.81f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
 static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.87f;
+static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.014f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1586,7 +1587,19 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   r = lutNativeClamp01(yNeutral + (r - yNeutral) * warmChromaScale);
   g = lutNativeClamp01(yNeutral + (g - yNeutral) * warmChromaScale);
   b = lutNativeClamp01(yNeutral + (b - yNeutral) * warmChromaScale);
-}
+
+  // Very subtle cool-channel guard for 100% LUT use.
+  // Some LUTs make blue shirts / cyan window light read too modern-clean on phone YUV.
+  // This only acts on saturated cool midtones and leaves neutral shadows alone.
+  float coolMidWeight = 1.0f - std::abs(yNeutral - 0.52f) / 0.42f;
+  coolMidWeight = lutNativeClamp01(coolMidWeight);
+  coolMidWeight = coolMidWeight * coolMidWeight;
+  float cyanMask = lutNativeClamp01(((b - r) + (g - r) * 0.45f - 0.055f) / 0.30f);
+  cyanMask = cyanMask * cyanMask * coolMidWeight;
+  const float cyanGuard = LUT_NATIVE_CYAN_GUARD_STRENGTH * cyanMask;
+  g = lutNativeClamp01(g * (1.0f - cyanGuard * 0.16f));
+  b = lutNativeClamp01(b * (1.0f - cyanGuard * 0.38f));
+ }
 
 
 /**

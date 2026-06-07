@@ -261,10 +261,8 @@ class LutImageProcessor {
             }
         }
 
-        // LUT-Native Mode: keep NR/sharpening disabled, but allow the LUT's own default recipe.
-        // This makes the pipeline profile-aware: M9, M240, Natural, Kodak, Hasselblad, Pentax, etc.
-        // can each keep a small corrective recipe without reintroducing the old processed baseline layer.
-        val effectiveRecipeParams = colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
+        // LUT-Native Mode: disable recipe/NR/sharpening so the selected LUT carries the look.
+        val effectiveRecipeParams = if (lutNativeModeEnabled) null else colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
         val redHalation = effectiveRecipeParams?.redHalation ?: 0f
 
@@ -354,7 +352,7 @@ class LutImageProcessor {
                 colorSpace = colorSpace,
                 isHlgInput = isHlgInput,
                 lutConfig = layer?.lutConfig,
-                colorRecipeParams = layer?.colorRecipeParams,
+                colorRecipeParams = null,
                 sharpeningValue = 0f,
                 noiseReductionValue = 0f,
                 chromaNoiseReductionValue = 0f
@@ -436,10 +434,8 @@ class LutImageProcessor {
             }
         }
 
-        // LUT-Native Mode: keep NR/sharpening disabled, but allow the LUT's own default recipe.
-        // This makes the pipeline profile-aware: M9, M240, Natural, Kodak, Hasselblad, Pentax, etc.
-        // can each keep a small corrective recipe without reintroducing the old processed baseline layer.
-        val effectiveRecipeParams = colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
+        // LUT-Native Mode: disable recipe/NR/sharpening so the selected LUT carries the look.
+        val effectiveRecipeParams = if (lutNativeModeEnabled) null else colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
         val redHalation = effectiveRecipeParams?.redHalation ?: 0f
 
@@ -526,7 +522,7 @@ class LutImageProcessor {
                 bitmap = bitmap,
                 isHlgInput = isHlgInput,
                 lutConfig = layer?.lutConfig,
-                colorRecipeParams = layer?.colorRecipeParams,
+                colorRecipeParams = null,
                 sharpeningValue = 0f,
                 noiseReductionValue = 0f,
                 chromaNoiseReductionValue = 0f
@@ -2703,15 +2699,25 @@ class LutImageProcessor {
                 // === LUT 处理（在色彩配方之后） ===
                 if (uLutEnabled && uLutIntensity > 0.0) {
                     bool isP3 = (uInputColorSpace == 1);
-                    vec3 linearInput = srgbToLinear(color.rgb);
+                    vec3 lutSource = clamp(color.rgb, 0.0, 1.0);
+                    vec3 linearInput = srgbToLinear(lutSource);
                     
                     if (isP3) {
                          linearInput = mat3(1.22486, -0.04205, -0.01974, -0.22471, 1.04192, -0.07865, 0.00000, 0.00013, 1.09837) * linearInput;
                     }
                     float effectiveLutIntensity = uLutIntensity * lutMaskWeight(uLutMaskType, linearInput);
 
-                    vec3 colorSpaceRGB = applyLutColorSpace(linearInput, uLutColorSpace);
-                    vec3 lutInColor = applyLutCurve(colorSpaceRGB, uLutCurve);
+                    vec3 lutInColor;
+                    // Standard v1 .plut files such as Leica_M9_STD.plut default to
+                    // curve = SRGB / 0 and colorSpace = SRGB / 0. For those LUTs,
+                    // feed direct sRGB coordinates into the LUT instead of doing an
+                    // unnecessary sRGB -> linear -> sRGB round trip before lookup.
+                    if (uLutCurve == 0 && uLutColorSpace == 0) {
+                        lutInColor = lutSource;
+                    } else {
+                        vec3 colorSpaceRGB = applyLutColorSpace(linearInput, uLutColorSpace);
+                        lutInColor = clamp(applyLutCurve(colorSpaceRGB, uLutCurve), 0.0, 1.0);
+                    }
                     
                     float scale = (uLutSize - 1.0) / uLutSize;
                     float offset = 1.0 / (2.0 * uLutSize);

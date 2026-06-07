@@ -234,7 +234,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val canStartShutterAnimation = _canStartShutterAnimation.asStateFlow()
 
     // LUT 相关状态
-    private val lutNativeForceNeutralProfile: Boolean = false
+    private val lutNativeForceNeutralProfile: Boolean = true
     var currentLutConfig: LutConfig? by mutableStateOf(null)
         private set
 
@@ -246,7 +246,14 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     @OptIn(ExperimentalCoroutinesApi::class)
     var currentRecipeParams = currentLutId.flatMapLatest { id ->
-        contentRepository.lutManager.getColorRecipeParams(id)
+        // None must be a true camera pass-through. Do not read any persisted
+        // "none" recipe, because that causes hidden color processing even
+        // when the user selected no LUT.
+        if (id == "none") {
+            flowOf(ColorRecipeParams.DEFAULT)
+        } else {
+            contentRepository.lutManager.getColorRecipeParams(id)
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -254,7 +261,12 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     )
 
     private fun recipeFlowFor(lutId: String): StateFlow<ColorRecipeParams> {
-        return contentRepository.lutManager.getColorRecipeParams(lutId).stateIn(
+        val source = if (lutId == "none") {
+            flowOf(ColorRecipeParams.DEFAULT)
+        } else {
+            contentRepository.lutManager.getColorRecipeParams(lutId)
+        }
+        return source.stateIn(
             viewModelScope,
             started = SharingStarted.Lazily,
             initialValue = ColorRecipeParams.DEFAULT,

@@ -144,109 +144,134 @@ class LutManager(private val context: Context) {
             return when {
                 key == "none" || key == "standard" -> ColorRecipeParams.DEFAULT
 
+                // Leica M9 / CCD: the anchor profile. Keep the LUT strong, but add density,
+                // darker lower mids, gentle highlight hold, and restrained skin/orange chroma.
                 key.contains("m9") || key.contains("ccd") -> ColorRecipeParams(
-                    contrast = 1.020f,
-                    saturation = 0.995f,
-                    color = 0.040f,
-                    highlights = -0.040f,
-                    shadows = -0.020f,
-                    toneToe = 0.050f,
-                    toneShoulder = 0.030f,
-                    skinChroma = -0.020f,
-                    orangeChroma = -0.020f,
-                    cyanChroma = -0.030f,
-                    blueChroma = -0.020f,
-                    lutIntensity = 1.000f,
-                    remarks = "LUT-Native default: M9 CCD density/texture hold"
-                )
-
-                key.contains("m240") || key.contains("m_240") || key.contains("typ240") || key.contains("typ_240") -> ColorRecipeParams(
-                    contrast = 0.970f,
-                    saturation = 0.985f,
-                    color = -0.015f,
-                    highlights = -0.040f,
-                    shadows = 0.015f,
-                    toneToe = -0.020f,
+                    exposure = -0.020f,
+                    contrast = 1.045f,
+                    saturation = 1.000f,
+                    color = 0.070f,
+                    highlights = -0.070f,
+                    shadows = -0.035f,
+                    toneToe = 0.075f,
                     toneShoulder = 0.055f,
-                    skinChroma = -0.010f,
-                    orangeChroma = -0.010f,
-                    blueChroma = -0.015f,
-                    lutIntensity = 0.940f,
-                    remarks = "LUT-Native default: M240 smooth film restraint"
+                    tonePivot = -0.010f,
+                    skinChroma = -0.025f,
+                    skinLightness = -0.010f,
+                    orangeChroma = -0.025f,
+                    yellowChroma = -0.010f,
+                    greenChroma = -0.005f,
+                    cyanChroma = -0.035f,
+                    blueChroma = -0.025f,
+                    lutIntensity = 0.980f,
+                    remarks = "LUT-Native default v2: M9 CCD density, highlight hold, restrained skin"
                 )
 
+                // Leica M240: smoother, lower bite, gentler shoulder. This should not chase M9 crunch.
+                key.contains("m240") || key.contains("m_240") || key.contains("typ240") || key.contains("typ_240") -> ColorRecipeParams(
+                    exposure = -0.010f,
+                    contrast = 0.965f,
+                    saturation = 0.985f,
+                    color = -0.020f,
+                    highlights = -0.055f,
+                    shadows = 0.020f,
+                    toneToe = -0.025f,
+                    toneShoulder = 0.070f,
+                    tonePivot = 0.010f,
+                    skinChroma = -0.015f,
+                    orangeChroma = -0.015f,
+                    yellowChroma = -0.010f,
+                    blueChroma = -0.020f,
+                    lutIntensity = 0.930f,
+                    remarks = "LUT-Native default v2: M240 smooth film restraint"
+                )
+
+                // Kodak / DCS Pro Back: warmer body and stronger colour separation, but at a lower LUT opacity
+                // so it does not become phone-vivid or waxy indoors.
                 key.contains("kodak") || key.contains("dcs") || key.contains("proback") -> ColorRecipeParams(
-                    exposure = -0.030f,
-                    contrast = 1.040f,
-                    saturation = 1.080f,
-                    temperature = 0.025f,
+                    exposure = -0.035f,
+                    contrast = 1.050f,
+                    saturation = 1.075f,
+                    temperature = 0.030f,
                     tint = 0.010f,
-                    color = 0.080f,
-                    highlights = -0.080f,
+                    color = 0.095f,
+                    highlights = -0.095f,
+                    shadows = -0.035f,
+                    toneToe = 0.075f,
+                    toneShoulder = 0.060f,
+                    tonePivot = -0.010f,
+                    skinChroma = 0.010f,
+                    skinLightness = -0.020f,
+                    redChroma = 0.020f,
+                    orangeChroma = 0.050f,
+                    yellowChroma = 0.030f,
+                    greenChroma = 0.015f,
+                    cyanChroma = -0.020f,
+                    blueChroma = -0.035f,
+                    lutIntensity = 0.900f,
+                    remarks = "LUT-Native default v2: Kodak warm midtone body, controlled opacity"
+                )
+
+                // Hasselblad/HNCS: clean, open, slightly refined colour. Less crunchy than M9/Kodak.
+                key.contains("hasselblad") || key.contains("hncs") || key.contains("xpan") -> ColorRecipeParams(
+                    contrast = 1.005f,
+                    saturation = 1.025f,
+                    color = 0.035f,
+                    highlights = -0.045f,
+                    shadows = -0.020f,
+                    toneToe = 0.030f,
+                    toneShoulder = 0.045f,
+                    skinChroma = -0.005f,
+                    orangeChroma = 0.005f,
+                    greenLightness = -0.015f,
+                    cyanChroma = -0.020f,
+                    blueChroma = -0.025f,
+                    lutIntensity = 0.920f,
+                    remarks = "LUT-Native default v2: Hasselblad clean colour body"
+                )
+
+                // Pentax/Satobi: warmer nostalgic separation. The opacity is controlled because Satobi can go heavy.
+                key.contains("pentax") || key.contains("satobi") -> ColorRecipeParams(
+                    exposure = -0.015f,
+                    contrast = 1.040f,
+                    saturation = 1.070f,
+                    temperature = 0.035f,
+                    tint = 0.005f,
+                    color = 0.075f,
+                    highlights = -0.065f,
                     shadows = -0.030f,
                     toneToe = 0.060f,
-                    toneShoulder = 0.040f,
-                    skinChroma = 0.015f,
-                    skinLightness = -0.015f,
-                    orangeChroma = 0.040f,
-                    yellowChroma = 0.025f,
-                    greenChroma = 0.015f,
+                    toneShoulder = 0.050f,
+                    redChroma = 0.025f,
+                    orangeChroma = 0.025f,
+                    yellowChroma = 0.035f,
+                    greenChroma = 0.020f,
+                    cyanChroma = -0.025f,
                     blueChroma = -0.030f,
-                    lutIntensity = 0.920f,
-                    remarks = "LUT-Native default: Kodak richer warm midtone body"
+                    lutIntensity = 0.910f,
+                    remarks = "LUT-Native default v2: Pentax/Satobi warm color separation"
                 )
 
-                key.contains("hasselblad") || key.contains("xpan") -> ColorRecipeParams(
-                    contrast = 1.000f,
-                    saturation = 1.020f,
-                    color = 0.025f,
-                    highlights = -0.030f,
-                    shadows = -0.015f,
-                    toneToe = 0.020f,
-                    toneShoulder = 0.030f,
-                    greenLightness = -0.010f,
-                    cyanChroma = -0.015f,
-                    blueChroma = -0.020f,
-                    lutIntensity = 0.940f,
-                    remarks = "LUT-Native default: Hasselblad clean body lift"
-                )
-
-                key.contains("pentax") -> ColorRecipeParams(
-                    contrast = 1.030f,
-                    saturation = 1.070f,
-                    temperature = 0.025f,
-                    color = 0.060f,
-                    highlights = -0.050f,
-                    shadows = -0.020f,
-                    toneToe = 0.045f,
-                    toneShoulder = 0.030f,
-                    redChroma = 0.020f,
-                    yellowChroma = 0.030f,
-                    greenChroma = 0.025f,
-                    cyanChroma = -0.020f,
-                    lutIntensity = 0.940f,
-                    remarks = "LUT-Native default: Pentax warm color separation"
-                )
-
+                // Leica Natural: clean profile with pop, not a faux-M9 profile. Keep it versatile.
                 key.contains("leica") || key.contains("natural") || key.contains("nat") -> ColorRecipeParams(
-                    contrast = 1.010f,
+                    contrast = 1.020f,
                     saturation = 1.030f,
-                    color = 0.035f,
-                    highlights = -0.030f,
-                    shadows = -0.010f,
-                    toneToe = 0.025f,
-                    toneShoulder = 0.025f,
+                    color = 0.045f,
+                    highlights = -0.045f,
+                    shadows = -0.015f,
+                    toneToe = 0.035f,
+                    toneShoulder = 0.040f,
+                    skinChroma = -0.005f,
                     greenChroma = 0.020f,
                     cyanChroma = -0.020f,
-                    blueChroma = -0.015f,
-                    lutIntensity = 0.960f,
-                    remarks = "LUT-Native default: Leica Natural clean pop"
+                    blueChroma = -0.020f,
+                    lutIntensity = 0.940f,
+                    remarks = "LUT-Native default v2: Leica Natural clean photographic pop"
                 )
 
                 else -> ColorRecipeParams.DEFAULT
             }
         }
-    }
 
     // LUT 缓存
     private val lutCache = LruCache<String, LutConfig>(CACHE_SIZE)

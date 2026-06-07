@@ -1477,26 +1477,26 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v9 - Highlight Chroma Guard.
+// LUT-Native base neutralizer v12 - Structure Recovery + Tungsten Guard.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v9 keeps the v8b shadow/midtone balance but adds a small highlight chroma guard for LUT stability:
-// - less milky lift than v7
-// - deeper lower mids / stronger shadow anchor
-// - slightly stronger highlight restraint
-// - same shadow chroma cleanup
-// - new highlight chroma damping to stop bright skin/screens from going hot under LUTs
-// - same tiny midtone warmth protection
+// v12 keeps the v11 LUT-friendly restraint but pulls back the soft veil:
+// - restores a little tonal structure and lower-mid body
+// - reduces the lifted/glowy close-up look from v11
+// - keeps pre-LUT saturation restrained so 75-100% LUTs remain realistic
+// - adds a masked tungsten/warm-pixel guard to reduce orange stacking without killing ambience
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.89f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.62f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.44f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.91f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.60f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.42f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.014f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.038f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.090f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.78f;
-static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.018f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.010f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.044f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.084f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.80f;
+static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
+static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
+static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.88f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1552,15 +1552,40 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   g = lutNativeClamp01(yNeutral + dg * saturation);
   b = lutNativeClamp01(yNeutral + db * saturation);
 
-  // Tiny warmth protection in midtones only.
-  // Weaker than v6 so tungsten is protected without making the base too orange before LUTs.
+  // Midtone warmth protection.
+  // v11 still let tungsten/orange values stack once strong LUTs were applied.
+  // v12 uses a masked guard: it only acts where pixels are already warm/orange-biased,
+  // so daylight blues and neutral shadows are not globally cooled.
   float midtoneWeight = 1.0f - std::abs(yNeutral - 0.50f) * 2.0f;
   midtoneWeight = lutNativeClamp01(midtoneWeight);
   midtoneWeight = midtoneWeight * midtoneWeight;
 
-  const float warmBias = LUT_NATIVE_WARMTH_PROTECT_STRENGTH * midtoneWeight;
-  r = lutNativeClamp01(r * (1.0f + warmBias));
-  b = lutNativeClamp01(b * (1.0f - warmBias));
+  const float warmDelta = r - b;
+  float warmPixelMask = lutNativeClamp01((warmDelta - 0.035f) / 0.22f);
+  warmPixelMask = warmPixelMask * warmPixelMask;
+
+  // Extra guard for the orange/yellow band most likely to turn waxy under tungsten.
+  float orangeMask = lutNativeClamp01(((r - g) + 0.06f) / 0.18f);
+  orangeMask *= warmPixelMask;
+
+  const float tungstenGuard = midtoneWeight * orangeMask;
+  const float warmProtect = LUT_NATIVE_WARMTH_PROTECT_STRENGTH * tungstenGuard;
+  const float tungstenProtect = LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH * tungstenGuard;
+
+  // Preserve warmth, but stop the red/yellow channel from becoming a second LUT on top of the LUT.
+  r = lutNativeClamp01(r * (1.0f - warmProtect));
+  g = lutNativeClamp01(g * (1.0f + tungstenProtect * 0.10f));
+  b = lutNativeClamp01(b * (1.0f + tungstenProtect * 0.55f));
+
+  // Small chroma compression only on warm midtones/highlights to reduce waxy skin and creamy white fur.
+  const float warmChromaScale = lutNativeMix(
+      1.0f,
+      LUT_NATIVE_TUNGSTEN_CHROMA_SCALE,
+      lutNativeClamp01(tungstenGuard + highlightWeight * warmPixelMask * 0.50f)
+  );
+  r = lutNativeClamp01(yNeutral + (r - yNeutral) * warmChromaScale);
+  g = lutNativeClamp01(yNeutral + (g - yNeutral) * warmChromaScale);
+  b = lutNativeClamp01(yNeutral + (b - yNeutral) * warmChromaScale);
 }
 
 

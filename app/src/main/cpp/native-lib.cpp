@@ -1484,13 +1484,13 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 // - Subject presence is slightly stronger, but black lift remains low.
 // - Cool wall suppression gently reduces clinical cyan/blue background lift without warming skin/fur globally.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.946f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.606f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.948f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.598f;
 static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.405f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.004f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.051f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.074f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.005f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.047f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.078f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.825f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
@@ -1499,7 +1499,7 @@ static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH = 0.006f;
 static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.010f;
 static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.022f;
+static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.020f;
 static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.008f;
 static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.013f;
 static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.014f;

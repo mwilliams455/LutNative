@@ -1477,25 +1477,26 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v10 - High Opacity LUT Readiness.
+// LUT-Native base neutralizer v9 - Highlight Chroma Guard.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
-// v10 deliberately makes the pre-LUT base less finished so normal users can run LUTs closer to 75-100%.
-// Compared with v9:
-// - lower pre-LUT contrast so LUT contrast does not compound as harshly
-// - lower pre-LUT saturation so 100% LUT application has more headroom
-// - softer highlight shoulder and stronger highlight chroma guard
-// - less lower-mid density so full-strength LUTs do not become muddy/crushed
-// - much weaker warmth protection so warm LUTs/wood/tungsten do not stack orange
+// This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
+// v9 keeps the v8b shadow/midtone balance but adds a small highlight chroma guard for LUT stability:
+// - less milky lift than v7
+// - deeper lower mids / stronger shadow anchor
+// - slightly stronger highlight restraint
+// - same shadow chroma cleanup
+// - new highlight chroma damping to stop bright skin/screens from going hot under LUTs
+// - same tiny midtone warmth protection
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.86f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.68f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.50f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.89f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.62f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.44f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.010f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.026f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.082f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.86f;
-static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.006f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.014f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.038f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.090f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.78f;
+static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.018f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1512,18 +1513,18 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
 
   const float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
 
-  // Reduce baked contrast around middle gray, then apply a very small black lift.
+  // Reduce baked contrast around middle gray, then apply a smaller black lift than v6.
   float yNeutral = (y - 0.5f) * LUT_NATIVE_BASE_CONTRAST + 0.5f;
   yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
   yNeutral = lutNativeClamp01(yNeutral);
 
-  // Add only mild lower-mid density. v10 leaves extra room for full-strength LUT contrast.
+  // Add density mainly in lower mids. This gives the base more body without simply crushing blacks.
   float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.34f) / 0.34f;
   lowerMidWeight = lutNativeClamp01(lowerMidWeight);
   lowerMidWeight = lowerMidWeight * lowerMidWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_LOWER_MID_DENSITY * lowerMidWeight));
 
-  // Softer highlight shoulder for full-strength LUTs, especially on walls, white objects, skin and screens.
+  // Gentle highlight shoulder. This reduces the clean/digital bright feel without making the image muddy.
   float highlightWeight = lutNativeClamp01((yNeutral - 0.62f) / 0.38f);
   highlightWeight = highlightWeight * highlightWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_HIGHLIGHT_SHOULDER * highlightWeight * (1.0f - yNeutral)));
@@ -1540,7 +1541,7 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   );
 
   // LUTs tend to push already-bright skin and screen-lit areas too hard.
-  // v10 uses a stronger high-luma chroma guard so 75-100% LUT opacity is less likely to break.
+  // Keep midtone color intact, but gently reduce chroma in the top stop.
   saturation *= lutNativeMix(1.0f, LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE, highlightWeight);
 
   const float dr = r - y;
@@ -1552,7 +1553,7 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   b = lutNativeClamp01(yNeutral + db * saturation);
 
   // Tiny warmth protection in midtones only.
-  // v10 keeps this very weak so warm LUTs do not stack orange on wood/tungsten.
+  // Weaker than v6 so tungsten is protected without making the base too orange before LUTs.
   float midtoneWeight = 1.0f - std::abs(yNeutral - 0.50f) * 2.0f;
   midtoneWeight = lutNativeClamp01(midtoneWeight);
   midtoneWeight = midtoneWeight * midtoneWeight;

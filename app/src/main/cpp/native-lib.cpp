@@ -1477,33 +1477,37 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v30 - Natural/Kodak restraint + M9 density hold.
-// Target: keep v29 M9 density while making Natural/Kodak less pale, peachy, and smartphone-open.
+// LUT-Native base neutralizer v31 - Camera-negative base recovery.
+// Target: fix the base first. Indoor/window-backlit scenes should no longer collapse
+// into silhouette before the LUT/profile layer has a chance to add camera character.
 // Notes:
-// - Backlit face open is reduced so Natural/Kodak do not go globally pale.
-// - Subject presence is slightly stronger, but black lift remains low.
-// - Cool wall suppression gently reduces clinical cyan/blue background lift without warming skin/fur globally.
+// - Opens shadows/lower-mids locally instead of doing a flat global exposure lift.
+// - Keeps a camera-like black anchor, but reduces the v30 lower-mid crush.
+// - Keeps highlight protection, but eases the shoulder so windows do not pull the
+//   entire room into a dark phone-HDR silhouette.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.956f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.958f;
 static constexpr float LUT_NATIVE_BASE_SATURATION = 0.592f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.402f;
-static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.004f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.050f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.100f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.792f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.410f;
+static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.42f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.014f;
+static constexpr float LUT_NATIVE_SHADOW_FLOOR_LIFT = 0.032f;
+static constexpr float LUT_NATIVE_LOWER_MID_OPEN_STRENGTH = 0.022f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.030f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.084f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.810f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
 static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.870f;
-static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH = 0.006f;
-static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.018f;
+static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.010f;
+static constexpr float LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH = 0.005f;
+static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.016f;
 static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.021f;
-static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.007f;
-static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.017f;
-static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.024f;
-static constexpr float LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH = 0.004f;
+static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.023f;
+static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.020f;
+static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.020f;
+static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.020f;
+static constexpr float LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH = 0.028f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1528,13 +1532,27 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
   yNeutral = lutNativeClamp01(yNeutral);
 
-  // Lower-mid body: slightly stronger than v24 to recover camera-like anchor.
-  float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.34f) / 0.34f;
+  // Camera-negative rescue: open deep shadows and lower-mids locally before the
+  // density step. This prevents backlit indoor scenes from becoming silhouettes
+  // while avoiding a broad, phone-like global exposure lift.
+  float shadowFloorWeight = lutNativeClamp01((0.34f - yNeutral) / 0.34f);
+  shadowFloorWeight = shadowFloorWeight * shadowFloorWeight;
+  yNeutral = lutNativeClamp01(yNeutral + LUT_NATIVE_SHADOW_FLOOR_LIFT * shadowFloorWeight * (1.0f - yNeutral));
+
+  float lowerMidOpenWeight = 1.0f - std::abs(yNeutral - 0.30f) / 0.30f;
+  lowerMidOpenWeight = lutNativeClamp01(lowerMidOpenWeight);
+  lowerMidOpenWeight = lowerMidOpenWeight * lowerMidOpenWeight;
+  yNeutral = lutNativeClamp01(yNeutral + LUT_NATIVE_LOWER_MID_OPEN_STRENGTH * lowerMidOpenWeight * (1.0f - yNeutral));
+
+  // Keep some lower-mid body, but much less than v30 so the base does not crush
+  // faces/subjects before the LUT layer.
+  float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.36f) / 0.36f;
   lowerMidWeight = lutNativeClamp01(lowerMidWeight);
   lowerMidWeight = lowerMidWeight * lowerMidWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_LOWER_MID_DENSITY * lowerMidWeight));
 
-  // Highlight shoulder: slightly firmer again to reduce the pale/veiled look.
+  // Highlight shoulder: eased from v30 to stop bright windows/blinds from forcing
+  // the entire room into a dark HDR silhouette.
   float highlightWeight = lutNativeClamp01((yNeutral - 0.62f) / 0.38f);
   highlightWeight = highlightWeight * highlightWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_HIGHLIGHT_SHOULDER * highlightWeight * (1.0f - yNeutral)));

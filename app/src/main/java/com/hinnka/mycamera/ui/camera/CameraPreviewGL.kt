@@ -229,18 +229,35 @@ fun CameraPreviewGL(
                                 }
                             }
                         }
-                        val colorRecipeEnabled = !colorRecipeParams.isDefault()
-                        val baselineColorRecipeEnabled = !baselineColorRecipeParams.isDefault()
+                        // Clean None path:
+                        // Camera2 preview arrives as ISP-processed sRGB. When no creative LUT is
+                        // selected, do not add baseline recipe, creative recipe, or baseline LUT on
+                        // top. This prevents the hidden double-processing that made None look cooked.
+                        val creativeLutSelected = currentLut != null
+                        val effectiveBaselineLut = if (creativeLutSelected) baselineLut else null
+                        val effectiveBaselineParams = if (creativeLutSelected) {
+                            baselineColorRecipeParams
+                        } else {
+                            ColorRecipeParams.DEFAULT
+                        }
+                        val effectiveColorParams = if (creativeLutSelected) {
+                            colorRecipeParams
+                        } else {
+                            ColorRecipeParams.DEFAULT
+                        }
+                        val colorRecipeEnabled = creativeLutSelected && !effectiveColorParams.isDefault()
+                        val baselineColorRecipeEnabled =
+                            effectiveBaselineLut != null && !effectiveBaselineParams.isDefault()
                         // 更新 LUT 设置
-                        glSurfaceView.setBaselineLut(baselineLut)
-                        glSurfaceView.setBaselineLutEnabled(baselineLut != null)
+                        glSurfaceView.setBaselineLut(effectiveBaselineLut)
+                        glSurfaceView.setBaselineLutEnabled(effectiveBaselineLut != null)
                         glSurfaceView.setLut(currentLut)
-                        glSurfaceView.setLutEnabled(currentLut != null)
+                        glSurfaceView.setLutEnabled(creativeLutSelected)
                         glSurfaceView.setBaselineColorRecipeEnabled(baselineColorRecipeEnabled)
                         glSurfaceView.setColorRecipeEnabled(colorRecipeEnabled)
 
-                        glSurfaceView.setBaselineParams(baselineColorRecipeParams)
-                        glSurfaceView.setParams(colorRecipeParams, aperture)
+                        glSurfaceView.setBaselineParams(effectiveBaselineParams)
+                        glSurfaceView.setParams(effectiveColorParams, aperture)
 
                         glSurfaceView.setFocusPoint(focusPoint?.let {
                             android.graphics.PointF(

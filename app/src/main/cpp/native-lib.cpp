@@ -1477,27 +1477,29 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v16 - 100% LUT Character Recovery.
+// LUT-Native base neutralizer v17 - Skin/midtone refinement.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v16 keeps v15's 100% LUT survivability, but adds back a little camera-like bite:
-// - slightly firmer tonal structure and lower-mid body than v15
-// - a small amount of extra color life without returning to overcooked phone saturation
-// - slightly deeper black anchoring to reduce the lifted/safe look
-// - retained tungsten protection, plus a very subtle cyan guard for blue/cyan digital cleanliness
+// v17 keeps v16's 100% LUT character, but opens skin mids slightly and reduces
+// orange/brown lower-mid buildup without globally cooling the whole image:
+// - a touch less heavy lower-mid density than v16
+// - slightly more midtone air while keeping blacks anchored
+// - relaxed cyan guard so blue does not go overly grey
+// - added masked skin-orange compression for warm skin/lower mids
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.935f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.57f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.39f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.932f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.575f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.385f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.006f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.043f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.074f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.81f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.007f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.040f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.075f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.805f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
-static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.87f;
-static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.014f;
+static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.031f;
+static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.865f;
+static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.012f;
+static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.012f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1577,6 +1579,20 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   r = lutNativeClamp01(r * (1.0f - warmProtect));
   g = lutNativeClamp01(g * (1.0f + tungstenProtect * 0.10f));
   b = lutNativeClamp01(b * (1.0f + tungstenProtect * 0.55f));
+
+  // Skin/lower-mid orange compression.
+  // This is separate from tungsten protection: it only acts on warm, skin-like
+  // lower/mid tones so M9 can keep density without turning faces brown/orange.
+  float skinLumaWeight = 1.0f - std::abs(yNeutral - 0.46f) / 0.28f;
+  skinLumaWeight = lutNativeClamp01(skinLumaWeight);
+  skinLumaWeight = skinLumaWeight * skinLumaWeight;
+  float skinHueMask = lutNativeClamp01(((r - g) + 0.035f) / 0.16f);
+  skinHueMask *= warmPixelMask;
+  skinHueMask = skinHueMask * skinHueMask;
+  const float skinOrangeCompress = LUT_NATIVE_SKIN_ORANGE_COMPRESS * skinLumaWeight * skinHueMask;
+  r = lutNativeClamp01(r * (1.0f - skinOrangeCompress));
+  g = lutNativeClamp01(g * (1.0f + skinOrangeCompress * 0.06f));
+  b = lutNativeClamp01(b * (1.0f + skinOrangeCompress * 0.20f));
 
   // Small chroma compression only on warm midtones/highlights to reduce waxy skin and creamy white fur.
   const float warmChromaScale = lutNativeMix(

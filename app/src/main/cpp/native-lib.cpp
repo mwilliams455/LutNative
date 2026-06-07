@@ -1484,26 +1484,26 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 // - Subject presence is slightly stronger, but black lift remains low.
 // - Cool wall suppression gently reduces clinical cyan/blue background lift without warming skin/fur globally.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.944f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.603f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.410f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.946f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.606f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.405f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
 static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.004f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.049f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.067f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.051f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.074f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.825f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
 static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.870f;
 static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH = 0.008f;
+static constexpr float LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH = 0.006f;
 static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.010f;
 static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.018f;
-static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.009f;
-static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.011f;
+static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.022f;
+static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.008f;
+static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.013f;
 static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.014f;
-static constexpr float LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH = 0.008f;
+static constexpr float LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH = 0.005f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));

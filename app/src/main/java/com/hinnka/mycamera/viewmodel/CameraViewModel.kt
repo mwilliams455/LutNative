@@ -234,7 +234,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     val canStartShutterAnimation = _canStartShutterAnimation.asStateFlow()
 
     // LUT 相关状态
-    private val lutNativeForceNeutralProfile: Boolean = true
+    private val lutNativeForceNeutralProfile: Boolean = false
     var currentLutConfig: LutConfig? by mutableStateOf(null)
         private set
 

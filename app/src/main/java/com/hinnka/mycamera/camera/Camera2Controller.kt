@@ -74,6 +74,17 @@ class Camera2Controller(private val context: Context) {
         private const val TAG = "Camera2Controller"
         private const val LUT_NATIVE_CAPTURE_NEUTRAL = true
 
+        // LUT-Native base v9: the HAL/ISP was protecting windows too aggressively,
+        // leaving indoor subjects dark and grey even when None was a clean passthrough.
+        // Add a small internal AE lift only for auto-exposed PHOTO mode. This is capture-side,
+        // so LUTs receive a slightly healthier midtone signal instead of trying to recover a flat file.
+        private const val LUT_NATIVE_PHOTO_AUTO_MIDTONE_EV = 0.35f
+
+        // Use a broader center-weighted AE area so backlit rooms do not meter almost entirely from windows.
+        private const val LUT_NATIVE_CENTER_WEIGHTED_AE_FRACTION = 0.30f
+        private const val LUT_NATIVE_SPOT_AE_FRACTION = 0.05f
+        private const val LUT_NATIVE_HIGHLIGHT_AE_FRACTION = 0.08f
+
         // 预览时的最大曝光时间（纳秒）：1/15秒 = 66ms
         // 超过这个时间会导致预览帧率过低，画面卡顿
         private const val MAX_PREVIEW_EXPOSURE_TIME = 66_000_000L // 66ms
@@ -1507,7 +1518,10 @@ class Camera2Controller(private val context: Context) {
 
         // 如果是全自动曝光，设置曝光补偿
         if (state.isIsoAuto && state.isShutterSpeedAuto) {
-            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, state.exposureCompensation)
+            builder.set(
+                CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION,
+                resolveLutNativePhotoAeCompensation(state)
+            )
         } else {
             // 手动曝光 / 半自动曝光：手动设置 ISO 和快门
             // 只有在支持 MANUAL_SENSOR 的设备上才设置，否则保持自动
@@ -1539,6 +1553,31 @@ class Camera2Controller(private val context: Context) {
                 }
             }
         }
+    }
+
+    private fun resolveLutNativePhotoAeCompensation(state: CameraState): Int {
+        if (!LUT_NATIVE_CAPTURE_NEUTRAL || state.captureMode != CaptureMode.PHOTO) {
+            return state.exposureCompensation
+        }
+
+        val evStep = state.getExposureCompensationStep()
+        if (evStep <= 0f || LUT_NATIVE_PHOTO_AUTO_MIDTONE_EV <= 0f) {
+            return state.exposureCompensation
+        }
+
+        val range = state.getExposureCompensationRange()
+        val internalSteps = (LUT_NATIVE_PHOTO_AUTO_MIDTONE_EV / evStep).roundToInt()
+        if (internalSteps == 0) return state.exposureCompensation
+
+        val adjusted = (state.exposureCompensation + internalSteps).coerceIn(range.lower, range.upper)
+        if (adjusted != state.exposureCompensation) {
+            PLog.d(
+                TAG,
+                "LUT-Native midtone AE lift: ${state.exposureCompensation} -> $adjusted " +
+                    "(${LUT_NATIVE_PHOTO_AUTO_MIDTONE_EV}EV target, step=$evStep)"
+            )
+        }
+        return adjusted
     }
 
     private fun resolveCaptureExposureCompensation(state: CameraState, droExposureReductionEv: Float): Int {
@@ -2780,9 +2819,9 @@ class Camera2Controller(private val context: Context) {
             val centerX = (finalX * activeRect.width()).toInt()
             val centerY = (finalY * activeRect.height()).toInt()
             val regionSizeFraction = when (mode) {
-                MeteringMode.SPOT -> 0.03f
-                MeteringMode.CENTER_WEIGHTED -> 0.2f
-                MeteringMode.HIGHLIGHT_PRIORITY -> 0.08f
+                MeteringMode.SPOT -> LUT_NATIVE_SPOT_AE_FRACTION
+                MeteringMode.CENTER_WEIGHTED -> LUT_NATIVE_CENTER_WEIGHTED_AE_FRACTION
+                MeteringMode.HIGHLIGHT_PRIORITY -> LUT_NATIVE_HIGHLIGHT_AE_FRACTION
             }
             val regionSize = (activeRect.width() * regionSizeFraction).toInt()
 
@@ -3198,10 +3237,10 @@ class Camera2Controller(private val context: Context) {
                 MeteringRectangle(activeRect, MeteringRectangle.METERING_WEIGHT_MAX)
             } else {
                 val aeSizeFraction = when (_state.value.meteringMode) {
-                    MeteringMode.SPOT -> 0.03f
-                    MeteringMode.CENTER_WEIGHTED -> 0.2f
-                    MeteringMode.HIGHLIGHT_PRIORITY -> 0.08f
-                    else -> 0.1f
+                    MeteringMode.SPOT -> LUT_NATIVE_SPOT_AE_FRACTION
+                    MeteringMode.CENTER_WEIGHTED -> LUT_NATIVE_CENTER_WEIGHTED_AE_FRACTION
+                    MeteringMode.HIGHLIGHT_PRIORITY -> LUT_NATIVE_HIGHLIGHT_AE_FRACTION
+                    else -> LUT_NATIVE_CENTER_WEIGHTED_AE_FRACTION
                 }
                 val aeSize = (activeRect.width() * aeSizeFraction).toInt()
                 val aeRect = android.graphics.Rect(

@@ -61,11 +61,6 @@ class LutManager(private val context: Context) {
             "lutIntensity"
         )
 
-        private fun hasLegacyParams(preferences: Preferences, lutId: String): Boolean {
-            return legacyFieldNames.any { name -> preferences.contains(floatPreferencesKey("${lutId}_$name")) } ||
-                preferences.contains(stringPreferencesKey("${lutId}_remarks"))
-        }
-
         private fun readLegacyParams(preferences: Preferences, lutId: String): ColorRecipeParams {
             fun f(name: String, default: Float = 0f) =
                 preferences[floatPreferencesKey("${lutId}_$name")] ?: default
@@ -132,145 +127,118 @@ class LutManager(private val context: Context) {
             remove(stringPreferencesKey("${lutId}_remarks"))
         }
 
+
         /**
-         * LUT-Native default recipes.
+         * Camera-family defaults used when a built-in/custom LUT has no user-saved recipe yet.
          *
-         * These are only used when the user has not saved a recipe for the LUT.
-         * They keep the neutral capture/base pipeline intact, but let each LUT land closer
-         * to its intended identity at 100% instead of needing manual per-LUT tuning.
+         * These are intentionally small "camera identity" trims. The LUT still carries the main
+         * colour transform; this layer gives each profile its own tone behaviour so the profiles
+         * do not all read as the same base render with a different LUT on top.
          */
-        private fun defaultNativeRecipeParams(lutId: String): ColorRecipeParams {
+        private fun defaultCameraRecipeFor(lutId: String): ColorRecipeParams? {
             val key = lutId.lowercase()
             return when {
-                key == "none" || key == "standard" -> ColorRecipeParams.DEFAULT
-
-                // Leica M9 / CCD: the anchor profile. Keep the LUT strong, but add density,
-                // darker lower mids, gentle highlight hold, and restrained skin/orange chroma.
                 key.contains("m9") || key.contains("ccd") -> ColorRecipeParams(
-                    exposure = -0.020f,
-                    contrast = 1.045f,
-                    saturation = 1.000f,
-                    color = 0.070f,
-                    highlights = -0.070f,
-                    shadows = -0.035f,
-                    toneToe = 0.075f,
-                    toneShoulder = 0.055f,
-                    tonePivot = -0.010f,
-                    skinChroma = -0.025f,
-                    skinLightness = -0.010f,
-                    orangeChroma = -0.025f,
-                    yellowChroma = -0.010f,
-                    greenChroma = -0.005f,
-                    cyanChroma = -0.035f,
-                    blueChroma = -0.025f,
-                    lutIntensity = 0.980f,
-                    remarks = "LUT-Native default v2: M9 CCD density, highlight hold, restrained skin"
-                )
-
-                // Leica M240: smoother, lower bite, gentler shoulder. This should not chase M9 crunch.
-                key.contains("m240") || key.contains("m_240") || key.contains("typ240") || key.contains("typ_240") -> ColorRecipeParams(
-                    exposure = -0.010f,
-                    contrast = 0.965f,
-                    saturation = 0.985f,
-                    color = -0.020f,
-                    highlights = -0.055f,
-                    shadows = 0.020f,
-                    toneToe = -0.025f,
-                    toneShoulder = 0.070f,
-                    tonePivot = 0.010f,
-                    skinChroma = -0.015f,
-                    orangeChroma = -0.015f,
-                    yellowChroma = -0.010f,
-                    blueChroma = -0.020f,
-                    lutIntensity = 0.930f,
-                    remarks = "LUT-Native default v2: M240 smooth film restraint"
-                )
-
-                // Kodak / DCS Pro Back: warmer body and stronger colour separation, but at a lower LUT opacity
-                // so it does not become phone-vivid or waxy indoors.
-                key.contains("kodak") || key.contains("dcs") || key.contains("proback") -> ColorRecipeParams(
-                    exposure = -0.035f,
-                    contrast = 1.050f,
-                    saturation = 1.075f,
-                    temperature = 0.030f,
-                    tint = 0.010f,
-                    color = 0.095f,
-                    highlights = -0.095f,
-                    shadows = -0.035f,
-                    toneToe = 0.075f,
-                    toneShoulder = 0.060f,
-                    tonePivot = -0.010f,
-                    skinChroma = 0.010f,
-                    skinLightness = -0.020f,
-                    redChroma = 0.020f,
-                    orangeChroma = 0.050f,
-                    yellowChroma = 0.030f,
-                    greenChroma = 0.015f,
-                    cyanChroma = -0.020f,
-                    blueChroma = -0.035f,
-                    lutIntensity = 0.900f,
-                    remarks = "LUT-Native default v2: Kodak warm midtone body, controlled opacity"
-                )
-
-                // Hasselblad/HNCS: clean, open, slightly refined colour. Less crunchy than M9/Kodak.
-                key.contains("hasselblad") || key.contains("hncs") || key.contains("xpan") -> ColorRecipeParams(
-                    contrast = 1.005f,
-                    saturation = 1.025f,
-                    color = 0.035f,
-                    highlights = -0.045f,
-                    shadows = -0.020f,
-                    toneToe = 0.030f,
-                    toneShoulder = 0.045f,
-                    skinChroma = -0.005f,
-                    orangeChroma = 0.005f,
-                    greenLightness = -0.015f,
-                    cyanChroma = -0.020f,
-                    blueChroma = -0.025f,
-                    lutIntensity = 0.920f,
-                    remarks = "LUT-Native default v2: Hasselblad clean colour body"
-                )
-
-                // Pentax/Satobi: warmer nostalgic separation. The opacity is controlled because Satobi can go heavy.
-                key.contains("pentax") || key.contains("satobi") -> ColorRecipeParams(
-                    exposure = -0.015f,
                     contrast = 1.040f,
-                    saturation = 1.070f,
-                    temperature = 0.035f,
-                    tint = 0.005f,
-                    color = 0.075f,
-                    highlights = -0.065f,
-                    shadows = -0.030f,
-                    toneToe = 0.060f,
-                    toneShoulder = 0.050f,
-                    redChroma = 0.025f,
-                    orangeChroma = 0.025f,
-                    yellowChroma = 0.035f,
-                    greenChroma = 0.020f,
-                    cyanChroma = -0.025f,
-                    blueChroma = -0.030f,
-                    lutIntensity = 0.910f,
-                    remarks = "LUT-Native default v2: Pentax/Satobi warm color separation"
+                    saturation = 1.018f,
+                    color = 0.018f,
+                    shadows = -0.010f,
+                    toneToe = 0.008f,
+                    toneShoulder = 0.006f,
+                    temperature = 0.002f,
+                    orangeChroma = 0.012f,
+                    greenChroma = -0.010f,
+                    cyanLightness = -0.006f,
+                    blueChroma = -0.004f,
+                    lutIntensity = 1.000f,
+                    remarks = "Default M9 CCD camera recipe v1"
                 )
 
-                // Leica Natural: clean profile with pop, not a faux-M9 profile. Keep it versatile.
-                key.contains("leica") || key.contains("natural") || key.contains("nat") -> ColorRecipeParams(
-                    contrast = 1.020f,
-                    saturation = 1.030f,
-                    color = 0.045f,
-                    highlights = -0.045f,
-                    shadows = -0.015f,
-                    toneToe = 0.035f,
-                    toneShoulder = 0.040f,
-                    skinChroma = -0.005f,
-                    greenChroma = 0.020f,
-                    cyanChroma = -0.020f,
-                    blueChroma = -0.020f,
-                    lutIntensity = 0.940f,
-                    remarks = "LUT-Native default v2: Leica Natural clean photographic pop"
+                key.contains("m240") || key.contains("smoothfilm") || key.contains("smooth_film") -> ColorRecipeParams(
+                    contrast = 1.018f,
+                    saturation = 1.008f,
+                    color = 0.010f,
+                    shadows = -0.004f,
+                    toneToe = 0.004f,
+                    toneShoulder = 0.004f,
+                    temperature = 0.002f,
+                    orangeChroma = 0.006f,
+                    greenChroma = -0.004f,
+                    lutIntensity = 1.000f,
+                    remarks = "Default Leica M240 Smooth Film camera recipe v1"
                 )
 
-                else -> ColorRecipeParams.DEFAULT
+                key.contains("kodak") || key.contains("dcspro") || key.contains("dcs_pro") -> ColorRecipeParams(
+                    contrast = 1.022f,
+                    saturation = 1.028f,
+                    color = 0.022f,
+                    shadows = -0.006f,
+                    toneToe = 0.007f,
+                    toneShoulder = 0.004f,
+                    temperature = 0.010f,
+                    redChroma = 0.010f,
+                    orangeChroma = 0.014f,
+                    yellowChroma = 0.006f,
+                    blueChroma = -0.006f,
+                    lutIntensity = 1.000f,
+                    remarks = "Default Kodak camera recipe v1"
+                )
+
+                key.contains("hasselblad") || key.contains("hncs") -> ColorRecipeParams(
+                    contrast = 1.012f,
+                    saturation = 1.014f,
+                    color = 0.008f,
+                    shadows = -0.003f,
+                    toneToe = 0.003f,
+                    toneShoulder = 0.003f,
+                    temperature = -0.001f,
+                    skinChroma = -0.004f,
+                    greenHue = -0.004f,
+                    greenChroma = 0.004f,
+                    cyanChroma = 0.004f,
+                    lutIntensity = 1.000f,
+                    remarks = "Default Hasselblad HNCS camera recipe v1"
+                )
+
+                key.contains("satobi") -> ColorRecipeParams(
+                    contrast = 1.006f,
+                    saturation = 0.988f,
+                    color = -0.006f,
+                    shadows = -0.002f,
+                    toneToe = 0.003f,
+                    toneShoulder = 0.002f,
+                    temperature = 0.006f,
+                    fade = 0.006f,
+                    greenChroma = -0.012f,
+                    yellowChroma = -0.006f,
+                    blueChroma = -0.006f,
+                    lutIntensity = 1.000f,
+                    remarks = "Default Pentax Satobi camera recipe v1"
+                )
+
+                (key == "leica" || key.contains("leica_natural") || key.contains("leica_nat") || key.contains("leica natural") || key == "natural") -> ColorRecipeParams(
+                    contrast = 1.028f,
+                    saturation = 1.012f,
+                    color = 0.012f,
+                    shadows = -0.006f,
+                    toneToe = 0.006f,
+                    toneShoulder = 0.005f,
+                    temperature = 0.001f,
+                    orangeChroma = 0.006f,
+                    greenChroma = -0.006f,
+                    lutIntensity = 1.000f,
+                    remarks = "Default Leica Natural camera recipe v1"
+                )
+
+                else -> null
             }
+        }
+
+        private fun fallbackRecipeFor(lutId: String, target: BaselineColorCorrectionTarget? = null): ColorRecipeParams {
+            // Baseline correction targets should stay neutral. These defaults are only for the
+            // creative/user-selected profile layer.
+            return if (target == null) defaultCameraRecipeFor(lutId) ?: ColorRecipeParams.DEFAULT
+            else ColorRecipeParams.DEFAULT
         }
     }
 
@@ -296,8 +264,10 @@ class LutManager(private val context: Context) {
         return context.colorRecipeDataStore.data.map { preferences ->
             val json = preferences[recipeKey(lutId, target)]
             if (json != null) ColorRecipeParams.fromJson(json)
-            else if (target == null && hasLegacyParams(preferences, lutId)) readLegacyParams(preferences, lutId)
-            else if (target == null) defaultNativeRecipeParams(lutId) else ColorRecipeParams.DEFAULT
+            else if (target == null) {
+                val legacyParams = readLegacyParams(preferences, lutId)
+                if (!legacyParams.isDefault()) legacyParams else fallbackRecipeFor(lutId, target)
+            } else fallbackRecipeFor(lutId, target)
         }
     }
 
@@ -476,8 +446,10 @@ class LutManager(private val context: Context) {
         return context.colorRecipeDataStore.data.map { preferences ->
             val json = preferences[recipeKey(lutId, target)]
             if (json != null) ColorRecipeParams.fromJson(json)
-            else if (target == null && hasLegacyParams(preferences, lutId)) readLegacyParams(preferences, lutId)
-            else if (target == null) defaultNativeRecipeParams(lutId) else ColorRecipeParams.DEFAULT
+            else if (target == null) {
+                val legacyParams = readLegacyParams(preferences, lutId)
+                if (!legacyParams.isDefault()) legacyParams else fallbackRecipeFor(lutId, target)
+            } else fallbackRecipeFor(lutId, target)
         }.firstOrNull() ?: ColorRecipeParams.DEFAULT
     }
 
@@ -490,8 +462,8 @@ class LutManager(private val context: Context) {
         lutId: String,
         target: BaselineColorCorrectionTarget? = null
     ) {
-        saveColorRecipeParams(lutId, ColorRecipeParams.DEFAULT, target)
-        PLog.d(TAG, "Color recipe params reset to default for LUT [$lutId]")
+        saveColorRecipeParams(lutId, fallbackRecipeFor(lutId, target), target)
+        PLog.d(TAG, "Color recipe params reset to camera default for LUT [$lutId]")
     }
 
     /**

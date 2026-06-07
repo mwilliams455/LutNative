@@ -1477,26 +1477,26 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v13 - Structure Recovery + Tungsten Guard Refinement.
+// LUT-Native base neutralizer v14 - 100% LUT Headroom + M9 Character Recovery.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v13 keeps v12 color restraint and tungsten protection, but adds a small structure pass:
-// - slightly firmer tonal separation and lower-mid body
-// - slightly deeper black anchoring to reduce the lifted/soft phone veil
-// - a less heavy highlight shoulder so fur/skin hold texture instead of smearing
-// - saturation remains restrained so high-opacity LUTs do not become neon or orange
+// v14 keeps v13 structure but creates more chroma headroom for 100% LUT use:
+// - slightly less pre-LUT color loading so 100% LUT behaves less like an overlay
+// - keeps/deepens tonal structure without returning to smartphone harshness
+// - eases lower-mid heaviness so skin is not buried in backlight
+// - stronger highlight/tungsten chroma protection for warm indoor scenes
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.925f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.59f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.41f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.935f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.54f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.37f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.007f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.048f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.078f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.82f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.006f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.044f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.074f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.78f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.028f;
-static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.89f;
+static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.032f;
+static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.86f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1561,11 +1561,11 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   midtoneWeight = midtoneWeight * midtoneWeight;
 
   const float warmDelta = r - b;
-  float warmPixelMask = lutNativeClamp01((warmDelta - 0.035f) / 0.22f);
+  float warmPixelMask = lutNativeClamp01((warmDelta - 0.025f) / 0.22f);
   warmPixelMask = warmPixelMask * warmPixelMask;
 
   // Extra guard for the orange/yellow band most likely to turn waxy under tungsten.
-  float orangeMask = lutNativeClamp01(((r - g) + 0.06f) / 0.18f);
+  float orangeMask = lutNativeClamp01(((r - g) + 0.05f) / 0.18f);
   orangeMask *= warmPixelMask;
 
   const float tungstenGuard = midtoneWeight * orangeMask;

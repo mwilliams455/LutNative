@@ -1477,33 +1477,33 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v24 - Backlight-aware subject refinement.
-// Target: keep v23 density/pop, but prevent hard window backlight from burying faces.
+// LUT-Native base neutralizer v25 - Density/backlight split refinement.
+// Target: keep v24 backlight readability while bringing back more v23 density.
 // Notes:
-// - This block is still per-pixel, so the backlight helper is a local luma/chroma approximation,
-//   not a full frame-average scene detector.
-// - M9 remains the density anchor.
-// - Natural/Kodak get protection from becoming globally pale/grey by avoiding broad shadow lift.
+// - Backlit face open is reduced so Natural/Kodak do not go globally pale.
+// - Subject presence is slightly stronger, but black lift remains low.
+// - Cool wall suppression gently reduces clinical cyan/blue background lift without warming skin/fur globally.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.943f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.602f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.944f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.603f;
 static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.410f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
 static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.004f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.048f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.068f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.049f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.067f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.825f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
 static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.870f;
 static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.012f;
+static constexpr float LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH = 0.008f;
 static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.010f;
 static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.018f;
-static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.010f;
-static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.010f;
+static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.009f;
+static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.011f;
 static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.014f;
-static constexpr float LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH = 0.012f;
+static constexpr float LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH = 0.008f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1523,18 +1523,18 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   const float minRgb = std::min(r, std::min(g, b));
   const float chroma = maxRgb - minRgb;
 
-  // V24 keeps the v23 density family, with a tiny ease in lower mids for face grace.
+  // V25 returns a little toward v23 density while keeping v24 backlight readability.
   float yNeutral = (y - 0.5f) * LUT_NATIVE_BASE_CONTRAST + 0.5f;
   yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
   yNeutral = lutNativeClamp01(yNeutral);
 
-  // Lower-mid body: still dense, but slightly less heavy than v23 in face/shirt shadows.
+  // Lower-mid body: slightly stronger than v24 to recover camera-like anchor.
   float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.34f) / 0.34f;
   lowerMidWeight = lutNativeClamp01(lowerMidWeight);
   lowerMidWeight = lowerMidWeight * lowerMidWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_LOWER_MID_DENSITY * lowerMidWeight));
 
-  // Highlight shoulder: softened from v23 so windows/ceilings retain a little smoother rolloff.
+  // Highlight shoulder: slightly firmer again to reduce the pale/veiled look.
   float highlightWeight = lutNativeClamp01((yNeutral - 0.62f) / 0.38f);
   highlightWeight = highlightWeight * highlightWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_HIGHLIGHT_SHOULDER * highlightWeight * (1.0f - yNeutral)));
@@ -1555,6 +1555,11 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   const float cyanWeight = lutNativeClamp01(((g + b) * 0.5f - r) * 2.5f) * lutNativeClamp01((yNeutral - 0.18f) / 0.52f);
   saturation *= (1.0f - LUT_NATIVE_CYAN_GUARD_STRENGTH * cyanWeight);
 
+  // Cool wall suppression: mostly low-chroma cyan/blue backgrounds, not warm subjects.
+  // This helps Natural/Kodak avoid the pale clinical wall cast without warming skin/fur globally.
+  const float coolWallWeight = cyanWeight * lutNativeClamp01((0.22f - chroma) / 0.22f) * lutNativeClamp01((yNeutral - 0.30f) / 0.45f);
+  saturation *= (1.0f - LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH * coolWallWeight);
+
   // Bright fabric/toy chroma trim: local only, mostly for high-chroma mid/high areas such as pink shirts.
   const float brightChromaWeight = lutNativeClamp01((yNeutral - 0.42f) / 0.36f) * lutNativeClamp01((chroma - 0.14f) / 0.30f);
   saturation *= (1.0f - LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM * brightChromaWeight);
@@ -1570,6 +1575,11 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   r = lutNativeClamp01(yNeutral + dr * saturation);
   g = lutNativeClamp01(yNeutral + dg * saturation);
   b = lutNativeClamp01(yNeutral + db * saturation);
+
+  const float coolWallBias = LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH * coolWallWeight;
+  r = lutNativeClamp01(r + coolWallBias * 0.18f);
+  g = lutNativeClamp01(g - coolWallBias * 0.06f);
+  b = lutNativeClamp01(b - coolWallBias * 0.24f);
 
   // Recompute after base sat/luma changes.
   float y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;

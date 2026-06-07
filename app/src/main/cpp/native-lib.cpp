@@ -1477,20 +1477,21 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v30 - Natural/Kodak restraint + M9 density hold.
-// Target: keep v29 M9 density while making Natural/Kodak less pale, peachy, and smartphone-open.
+// LUT-Native base neutralizer v32 - photographic density/pop pass.
+// Target: recover the 35% "wow" at 100% by improving the shared renderer, not just pushing LUT opacity.
 // Notes:
-// - Backlit face open is reduced so Natural/Kodak do not go globally pale.
-// - Subject presence is slightly stronger, but black lift remains low.
-// - Cool wall suppression gently reduces clinical cyan/blue background lift without warming skin/fur globally.
+// - Slightly more base saturation and mid-pop for camera-like separation.
+// - Softer highlight shoulder than v31/v30 so bright skin does not go chalky/milky.
+// - Shadows are a bit more restrained in chroma while black lift is kept low for density.
+// - Recipe identity still lives in LutManager; this layer is intentionally shared and conservative.
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.952f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.586f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.398f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.948f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.600f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.390f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.003f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.053f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.106f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.005f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.052f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.082f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.798f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
@@ -1499,7 +1500,7 @@ static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH = 0.006f;
 static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.018f;
 static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.020f;
+static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.024f;
 static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.006f;
 static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.015f;
 static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.021f;
@@ -1524,27 +1525,27 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   const float chroma = maxRgb - minRgb;
 
   // V25 returns a little toward v23 density while keeping v24 backlight readability.
-  float yNeutral = (y - 0.5f) * LUT_NATIVE_BASE_CONTRAST + 0.5f;
-  yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.948f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.005f;
   yNeutral = lutNativeClamp01(yNeutral);
 
   // Lower-mid body: slightly stronger than v24 to recover camera-like anchor.
   float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.34f) / 0.34f;
   lowerMidWeight = lutNativeClamp01(lowerMidWeight);
   lowerMidWeight = lowerMidWeight * lowerMidWeight;
-  yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_LOWER_MID_DENSITY * lowerMidWeight));
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.052f;
 
   // Highlight shoulder: slightly firmer again to reduce the pale/veiled look.
   float highlightWeight = lutNativeClamp01((yNeutral - 0.62f) / 0.38f);
   highlightWeight = highlightWeight * highlightWeight;
-  yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_HIGHLIGHT_SHOULDER * highlightWeight * (1.0f - yNeutral)));
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.082f;
 
   float shadowWeight = lutNativeClamp01((LUT_NATIVE_SHADOW_CHROMA_THRESHOLD - yNeutral) / LUT_NATIVE_SHADOW_CHROMA_THRESHOLD);
   shadowWeight = shadowWeight * shadowWeight;
 
   float saturation = lutNativeMix(
-      LUT_NATIVE_BASE_SATURATION,
-      LUT_NATIVE_SHADOW_SATURATION,
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.600f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.390f;
       shadowWeight
   );
 

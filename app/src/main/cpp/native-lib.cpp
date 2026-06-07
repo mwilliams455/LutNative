@@ -1489,11 +1489,11 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 // - intentionally avoids another large contrast/saturation jump
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
 static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.940f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.600f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.602f;
 static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.405f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
 static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.006f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.046f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.045f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.070f;
 static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.825f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
@@ -1502,7 +1502,7 @@ static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.870f;
 static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.010f;
 static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.010f;
 static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.018f;
+static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.019f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));

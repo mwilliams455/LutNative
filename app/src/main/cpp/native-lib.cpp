@@ -1477,26 +1477,26 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v12 - Structure Recovery + Tungsten Guard.
+// LUT-Native base neutralizer v13 - Structure Recovery + Tungsten Guard Refinement.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v12 keeps the v11 LUT-friendly restraint but pulls back the soft veil:
-// - restores a little tonal structure and lower-mid body
-// - reduces the lifted/glowy close-up look from v11
-// - keeps pre-LUT saturation restrained so 75-100% LUTs remain realistic
-// - adds a masked tungsten/warm-pixel guard to reduce orange stacking without killing ambience
+// v13 keeps v12 color restraint and tungsten protection, but adds a small structure pass:
+// - slightly firmer tonal separation and lower-mid body
+// - slightly deeper black anchoring to reduce the lifted/soft phone veil
+// - a less heavy highlight shoulder so fur/skin hold texture instead of smearing
+// - saturation remains restrained so high-opacity LUTs do not become neon or orange
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.91f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.60f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.42f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.925f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.59f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.41f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.010f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.044f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.084f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.80f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.007f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.048f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.078f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.82f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
-static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.88f;
+static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.028f;
+static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.89f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));

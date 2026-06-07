@@ -1486,17 +1486,17 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 // - eases lower-mid heaviness so skin is not buried in backlight
 // - stronger highlight/tungsten chroma protection for warm indoor scenes
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.935f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.54f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.37f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.925f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.56f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.38f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.006f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.044f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.074f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.78f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.008f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.041f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.076f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.80f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
-static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.032f;
-static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.86f;
+static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
+static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.87f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));

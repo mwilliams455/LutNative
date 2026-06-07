@@ -61,6 +61,11 @@ class LutManager(private val context: Context) {
             "lutIntensity"
         )
 
+        private fun hasLegacyParams(preferences: Preferences, lutId: String): Boolean {
+            return legacyFieldNames.any { name -> preferences.contains(floatPreferencesKey("${lutId}_$name")) } ||
+                preferences.contains(stringPreferencesKey("${lutId}_remarks"))
+        }
+
         private fun readLegacyParams(preferences: Preferences, lutId: String): ColorRecipeParams {
             fun f(name: String, default: Float = 0f) =
                 preferences[floatPreferencesKey("${lutId}_$name")] ?: default
@@ -126,6 +131,121 @@ class LutManager(private val context: Context) {
             legacyFieldNames.forEach { name -> remove(floatPreferencesKey("${lutId}_$name")) }
             remove(stringPreferencesKey("${lutId}_remarks"))
         }
+
+        /**
+         * LUT-Native default recipes.
+         *
+         * These are only used when the user has not saved a recipe for the LUT.
+         * They keep the neutral capture/base pipeline intact, but let each LUT land closer
+         * to its intended identity at 100% instead of needing manual per-LUT tuning.
+         */
+        private fun defaultNativeRecipeParams(lutId: String): ColorRecipeParams {
+            val key = lutId.lowercase()
+            return when {
+                key == "none" || key == "standard" -> ColorRecipeParams.DEFAULT
+
+                key.contains("m9") || key.contains("ccd") -> ColorRecipeParams(
+                    contrast = 1.020f,
+                    saturation = 0.995f,
+                    color = 0.040f,
+                    highlights = -0.040f,
+                    shadows = -0.020f,
+                    toneToe = 0.050f,
+                    toneShoulder = 0.030f,
+                    skinChroma = -0.020f,
+                    orangeChroma = -0.020f,
+                    cyanChroma = -0.030f,
+                    blueChroma = -0.020f,
+                    lutIntensity = 1.000f,
+                    remarks = "LUT-Native default: M9 CCD density/texture hold"
+                )
+
+                key.contains("m240") || key.contains("m_240") || key.contains("typ240") || key.contains("typ_240") -> ColorRecipeParams(
+                    contrast = 0.970f,
+                    saturation = 0.985f,
+                    color = -0.015f,
+                    highlights = -0.040f,
+                    shadows = 0.015f,
+                    toneToe = -0.020f,
+                    toneShoulder = 0.055f,
+                    skinChroma = -0.010f,
+                    orangeChroma = -0.010f,
+                    blueChroma = -0.015f,
+                    lutIntensity = 0.940f,
+                    remarks = "LUT-Native default: M240 smooth film restraint"
+                )
+
+                key.contains("kodak") || key.contains("dcs") || key.contains("proback") -> ColorRecipeParams(
+                    exposure = -0.030f,
+                    contrast = 1.040f,
+                    saturation = 1.080f,
+                    temperature = 0.025f,
+                    tint = 0.010f,
+                    color = 0.080f,
+                    highlights = -0.080f,
+                    shadows = -0.030f,
+                    toneToe = 0.060f,
+                    toneShoulder = 0.040f,
+                    skinChroma = 0.015f,
+                    skinLightness = -0.015f,
+                    orangeChroma = 0.040f,
+                    yellowChroma = 0.025f,
+                    greenChroma = 0.015f,
+                    blueChroma = -0.030f,
+                    lutIntensity = 0.920f,
+                    remarks = "LUT-Native default: Kodak richer warm midtone body"
+                )
+
+                key.contains("hasselblad") || key.contains("xpan") -> ColorRecipeParams(
+                    contrast = 1.000f,
+                    saturation = 1.020f,
+                    color = 0.025f,
+                    highlights = -0.030f,
+                    shadows = -0.015f,
+                    toneToe = 0.020f,
+                    toneShoulder = 0.030f,
+                    greenLightness = -0.010f,
+                    cyanChroma = -0.015f,
+                    blueChroma = -0.020f,
+                    lutIntensity = 0.940f,
+                    remarks = "LUT-Native default: Hasselblad clean body lift"
+                )
+
+                key.contains("pentax") -> ColorRecipeParams(
+                    contrast = 1.030f,
+                    saturation = 1.070f,
+                    temperature = 0.025f,
+                    color = 0.060f,
+                    highlights = -0.050f,
+                    shadows = -0.020f,
+                    toneToe = 0.045f,
+                    toneShoulder = 0.030f,
+                    redChroma = 0.020f,
+                    yellowChroma = 0.030f,
+                    greenChroma = 0.025f,
+                    cyanChroma = -0.020f,
+                    lutIntensity = 0.940f,
+                    remarks = "LUT-Native default: Pentax warm color separation"
+                )
+
+                key.contains("leica") || key.contains("natural") || key.contains("nat") -> ColorRecipeParams(
+                    contrast = 1.010f,
+                    saturation = 1.030f,
+                    color = 0.035f,
+                    highlights = -0.030f,
+                    shadows = -0.010f,
+                    toneToe = 0.025f,
+                    toneShoulder = 0.025f,
+                    greenChroma = 0.020f,
+                    cyanChroma = -0.020f,
+                    blueChroma = -0.015f,
+                    lutIntensity = 0.960f,
+                    remarks = "LUT-Native default: Leica Natural clean pop"
+                )
+
+                else -> ColorRecipeParams.DEFAULT
+            }
+        }
     }
 
     // LUT 缓存
@@ -142,10 +262,6 @@ class LutManager(private val context: Context) {
 
     /**
      * 获取指定 LUT 的色彩配方参数 Flow
-     *
-     * If the user has never edited a LUT recipe, fall back to a shipped default recipe
-     * for camera-style LUT families. This keeps imported/plut LUTs usable at 100%
-     * without hand-tuning every individual LUT.
      */
     fun getColorRecipeParams(
         lutId: String,
@@ -153,133 +269,9 @@ class LutManager(private val context: Context) {
     ): Flow<ColorRecipeParams> {
         return context.colorRecipeDataStore.data.map { preferences ->
             val json = preferences[recipeKey(lutId, target)]
-            when {
-                json != null -> ColorRecipeParams.fromJson(json)
-                target == null -> readLegacyParams(preferences, lutId) ?: defaultColorRecipeParams(lutId)
-                else -> defaultColorRecipeParams(lutId)
-            }
-        }
-    }
-
-    private fun defaultColorRecipeParams(lutId: String): ColorRecipeParams {
-        val lutInfo = getLutInfo(lutId)
-        val searchKey = buildString {
-            append(lutId.lowercase())
-            append(' ')
-            append(lutInfo?.fileName?.lowercase().orEmpty())
-            append(' ')
-            append(lutInfo?.nameMap?.values?.joinToString(" ") { it.lowercase() }.orEmpty())
-            append(' ')
-            append(lutInfo?.category?.lowercase().orEmpty())
-        }
-
-        return when {
-            lutId == "none" -> ColorRecipeParams.DEFAULT
-
-            // M9 / CCD anchor: keep density and bite, but restrain skin-orange and cyan wall push.
-            searchKey.contains("leica_m9") || searchKey.contains("m9") || searchKey.contains("ccd") ->
-                ColorRecipeParams.DEFAULT.copy(
-                    contrast = 1.08f,
-                    saturation = 0.96f,
-                    color = 0.08f,
-                    highlights = -0.18f,
-                    shadows = -0.04f,
-                    toneToe = 0.12f,
-                    toneShoulder = 0.18f,
-                    skinChroma = -0.04f,
-                    orangeChroma = -0.04f,
-                    cyanChroma = -0.06f,
-                    blueChroma = -0.06f,
-                    lutIntensity = 1.0f
-                )
-
-            // M240-style Leica: more modern than M9, smoother highlights, still Leica-ish density.
-            searchKey.contains("m240") || searchKey.contains("typ 240") || searchKey.contains("type 240") ->
-                ColorRecipeParams.DEFAULT.copy(
-                    contrast = 1.05f,
-                    saturation = 0.97f,
-                    color = 0.05f,
-                    highlights = -0.12f,
-                    shadows = 0.01f,
-                    toneToe = 0.08f,
-                    toneShoulder = 0.12f,
-                    orangeChroma = -0.03f,
-                    cyanChroma = -0.04f,
-                    blueChroma = -0.04f,
-                    lutIntensity = 1.0f
-                )
-
-            // Leica Natural/ETN: calmer than M9, but not grey/washed.
-            lutId == "leica" || searchKey.contains("leica") ->
-                ColorRecipeParams.DEFAULT.copy(
-                    contrast = 1.04f,
-                    saturation = 0.98f,
-                    color = 0.04f,
-                    temperature = 0.01f,
-                    highlights = -0.14f,
-                    shadows = -0.02f,
-                    toneToe = 0.06f,
-                    toneShoulder = 0.14f,
-                    skinChroma = -0.03f,
-                    cyanChroma = -0.05f,
-                    blueChroma = -0.04f,
-                    lutIntensity = 1.0f
-                )
-
-            // Hasselblad: clean, open, natural color with controlled skin/chroma.
-            searchKey.contains("hasselblad") ->
-                ColorRecipeParams.DEFAULT.copy(
-                    contrast = 1.02f,
-                    saturation = 0.94f,
-                    color = 0.03f,
-                    tint = -0.01f,
-                    highlights = -0.10f,
-                    shadows = 0.02f,
-                    toneToe = 0.04f,
-                    toneShoulder = 0.10f,
-                    skinChroma = -0.03f,
-                    orangeChroma = -0.03f,
-                    greenChroma = -0.02f,
-                    blueChroma = -0.03f,
-                    lutIntensity = 1.0f
-                )
-
-            // Pentax family: lively color and greens, but restrained enough for 100% LUT use.
-            searchKey.contains("pentax") ->
-                ColorRecipeParams.DEFAULT.copy(
-                    contrast = 1.05f,
-                    saturation = 0.96f,
-                    color = 0.08f,
-                    temperature = 0.01f,
-                    highlights = -0.14f,
-                    shadows = 0.00f,
-                    toneToe = 0.07f,
-                    toneShoulder = 0.12f,
-                    orangeChroma = -0.04f,
-                    yellowChroma = -0.02f,
-                    greenChroma = 0.04f,
-                    blueChroma = -0.03f,
-                    lutIntensity = 1.0f
-                )
-
-            // Kodak/film portrait family: reduce peachy phone brightness while keeping warmth.
-            searchKey.contains("kodak") || searchKey.contains("ultramax") || searchKey.contains("portra") ->
-                ColorRecipeParams.DEFAULT.copy(
-                    contrast = 1.03f,
-                    saturation = 0.94f,
-                    color = 0.06f,
-                    temperature = 0.02f,
-                    highlights = -0.20f,
-                    shadows = -0.02f,
-                    toneToe = 0.08f,
-                    toneShoulder = 0.20f,
-                    skinChroma = -0.08f,
-                    orangeChroma = -0.08f,
-                    yellowChroma = -0.03f,
-                    lutIntensity = 1.0f
-                )
-
-            else -> ColorRecipeParams.DEFAULT
+            if (json != null) ColorRecipeParams.fromJson(json)
+            else if (target == null && hasLegacyParams(preferences, lutId)) readLegacyParams(preferences, lutId)
+            else if (target == null) defaultNativeRecipeParams(lutId) else ColorRecipeParams.DEFAULT
         }
     }
 
@@ -457,12 +449,10 @@ class LutManager(private val context: Context) {
     ): ColorRecipeParams {
         return context.colorRecipeDataStore.data.map { preferences ->
             val json = preferences[recipeKey(lutId, target)]
-            when {
-                json != null -> ColorRecipeParams.fromJson(json)
-                target == null -> readLegacyParams(preferences, lutId) ?: defaultColorRecipeParams(lutId)
-                else -> defaultColorRecipeParams(lutId)
-            }
-        }.firstOrNull() ?: defaultColorRecipeParams(lutId)
+            if (json != null) ColorRecipeParams.fromJson(json)
+            else if (target == null && hasLegacyParams(preferences, lutId)) readLegacyParams(preferences, lutId)
+            else if (target == null) defaultNativeRecipeParams(lutId) else ColorRecipeParams.DEFAULT
+        }.firstOrNull() ?: ColorRecipeParams.DEFAULT
     }
 
     /**
@@ -474,14 +464,8 @@ class LutManager(private val context: Context) {
         lutId: String,
         target: BaselineColorCorrectionTarget? = null
     ) {
-        // Remove the user override so built-in/default LUT recipes can re-apply.
-        context.colorRecipeDataStore.edit { preferences ->
-            preferences.remove(recipeKey(lutId, target))
-            if (target == null) {
-                preferences.removeLegacyKeys(lutId)
-            }
-        }
-        PLog.d(TAG, "Color recipe params reset to shipped default for LUT [$lutId]")
+        saveColorRecipeParams(lutId, ColorRecipeParams.DEFAULT, target)
+        PLog.d(TAG, "Color recipe params reset to default for LUT [$lutId]")
     }
 
     /**

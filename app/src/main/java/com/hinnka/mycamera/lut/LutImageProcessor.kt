@@ -261,8 +261,10 @@ class LutImageProcessor {
             }
         }
 
-        // LUT-Native Mode: disable recipe/NR/sharpening so the selected LUT carries the look.
-        val effectiveRecipeParams = if (lutNativeModeEnabled) null else colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
+        // LUT-Native Mode: keep NR/sharpening disabled, but allow the LUT's own default recipe.
+        // This makes the pipeline profile-aware: M9, M240, Natural, Kodak, Hasselblad, Pentax, etc.
+        // can each keep a small corrective recipe without reintroducing the old processed baseline layer.
+        val effectiveRecipeParams = colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
         val redHalation = effectiveRecipeParams?.redHalation ?: 0f
 
@@ -352,7 +354,7 @@ class LutImageProcessor {
                 colorSpace = colorSpace,
                 isHlgInput = isHlgInput,
                 lutConfig = layer?.lutConfig,
-                colorRecipeParams = null,
+                colorRecipeParams = layer?.colorRecipeParams,
                 sharpeningValue = 0f,
                 noiseReductionValue = 0f,
                 chromaNoiseReductionValue = 0f
@@ -434,8 +436,10 @@ class LutImageProcessor {
             }
         }
 
-        // LUT-Native Mode: disable recipe/NR/sharpening so the selected LUT carries the look.
-        val effectiveRecipeParams = if (lutNativeModeEnabled) null else colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
+        // LUT-Native Mode: keep NR/sharpening disabled, but allow the LUT's own default recipe.
+        // This makes the pipeline profile-aware: M9, M240, Natural, Kodak, Hasselblad, Pentax, etc.
+        // can each keep a small corrective recipe without reintroducing the old processed baseline layer.
+        val effectiveRecipeParams = colorRecipeParams?.let(ColorPaletteMapper::mergeIntoEffectiveParams)
         val halation = effectiveRecipeParams?.halation ?: 0f
         val redHalation = effectiveRecipeParams?.redHalation ?: 0f
 
@@ -522,7 +526,7 @@ class LutImageProcessor {
                 bitmap = bitmap,
                 isHlgInput = isHlgInput,
                 lutConfig = layer?.lutConfig,
-                colorRecipeParams = null,
+                colorRecipeParams = layer?.colorRecipeParams,
                 sharpeningValue = 0f,
                 noiseReductionValue = 0f,
                 chromaNoiseReductionValue = 0f

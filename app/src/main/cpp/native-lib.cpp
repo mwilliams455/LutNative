@@ -1477,31 +1477,31 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v18 - Pop Recovery + Indoor/Outdoor Guardrails.
+// LUT-Native base neutralizer v19 - Density / Pop Recovery.
 // The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
 // This counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
-// v18 keeps v17's 100% LUT stability but restores some of the emotional pop:
-// - a little more color life without returning to LUT harshness
-// - slightly more shadow/midtone air so indoor skin is less buried
-// - green separation for overcast daylight so grass/foliage do not collapse into grey
-// - indoor mid-pop for faces/shirts without global phone contrast
-// - tungsten, skin-orange, and cyan guards retained but relaxed slightly
+// v19 pushes back toward the 35% "wow" while keeping 100% LUT use stable:
+// - stronger lower-mid density and black anchor
+// - more color life without returning to neon phone saturation
+// - firmer highlight shoulder to reduce the pale/veiled look
+// - stronger indoor mid-pop for faces, hair and fabric
+// - slightly more green separation for overcast daylight
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.930f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.590f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.395f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.945f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.605f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.415f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.008f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.038f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.076f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.812f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.004f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.050f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.068f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.825f;
 static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.030f;
 static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.870f;
 static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.010f;
 static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.010f;
-static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.010f;
-static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.012f;
+static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.012f;
+static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.020f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1523,14 +1523,14 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
   yNeutral = lutNativeClamp01(yNeutral);
 
-  // Add density mainly in lower mids. v18 eases this from the heavier v16/v17 feel
-  // so indoor skin can breathe while shadows remain anchored.
+  // Add density mainly in lower mids. v19 restores more of the camera-like bite and
+  // black/midtone anchor that made the lower-opacity tests feel more dimensional.
   float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.34f) / 0.34f;
   lowerMidWeight = lutNativeClamp01(lowerMidWeight);
   lowerMidWeight = lowerMidWeight * lowerMidWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_LOWER_MID_DENSITY * lowerMidWeight));
 
-  // Gentle highlight shoulder. Enough rolloff for 100% LUT use without the v11/v12 veil.
+  // Firmer highlight shoulder. v19 reduces the pale/veiled look while still keeping 100% LUTs controlled.
   float highlightWeight = lutNativeClamp01((yNeutral - 0.62f) / 0.38f);
   highlightWeight = highlightWeight * highlightWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_HIGHLIGHT_SHOULDER * highlightWeight * (1.0f - yNeutral)));
@@ -1588,8 +1588,8 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   g = lutNativeClamp01(yNeutral + (g - yNeutral) * warmChromaScale);
   b = lutNativeClamp01(yNeutral + (b - yNeutral) * warmChromaScale);
 
-  // Skin/lower-mid orange compression. This is intentionally weaker than v17 so the image
-  // regains pop, but still prevents brown/orange buildup on faces at 100% LUT.
+  // Skin/lower-mid orange compression. Kept at v18 strength so added density does not
+  // turn faces brown/orange at 100% LUT.
   float skinOrangeMask = lutNativeClamp01((r - b - 0.045f) / 0.22f);
   skinOrangeMask *= lutNativeClamp01((r - g + 0.02f) / 0.16f);
   skinOrangeMask *= midtoneWeight;
@@ -1623,8 +1623,8 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   r = lutNativeClamp01(r * (1.0f - greenSep * 0.20f));
   b = lutNativeClamp01(b * (1.0f - greenSep * 0.15f));
 
-  // Indoor mid-pop. A tiny luma-only lift in true midtones restores face/shirt life
-  // without globally increasing contrast or saturation.
+  // Indoor mid-pop. Stronger in v19 to restore face/shirt life and the "wow" from
+  // the lower-opacity tests without globally lifting highlights.
   const float indoorMidPop = LUT_NATIVE_INDOOR_MID_POP_STRENGTH * midtoneWeight * (1.0f - highlightWeight) * (1.0f - shadowWeight * 0.50f);
   r = lutNativeClamp01(r + indoorMidPop * (1.0f - r) * 0.35f);
   g = lutNativeClamp01(g + indoorMidPop * (1.0f - g) * 0.35f);

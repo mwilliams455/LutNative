@@ -139,95 +139,109 @@ class LutManager(private val context: Context) {
             val key = lutId.lowercase()
             return when {
                 key.contains("m9") || key.contains("ccd") -> ColorRecipeParams(
-                    contrast = 1.040f,
-                    saturation = 1.018f,
-                    color = 0.018f,
-                    shadows = -0.010f,
-                    toneToe = 0.008f,
-                    toneShoulder = 0.006f,
-                    temperature = 0.002f,
-                    orangeChroma = 0.012f,
-                    greenChroma = -0.010f,
-                    cyanLightness = -0.006f,
-                    blueChroma = -0.004f,
-                    lutIntensity = 1.000f,
-                    remarks = "Default M9 CCD camera recipe v1"
-                )
-
-                key.contains("m240") || key.contains("smoothfilm") || key.contains("smooth_film") -> ColorRecipeParams(
-                    contrast = 1.018f,
-                    saturation = 1.008f,
-                    color = 0.010f,
-                    shadows = -0.004f,
-                    toneToe = 0.004f,
-                    toneShoulder = 0.004f,
-                    temperature = 0.002f,
-                    orangeChroma = 0.006f,
-                    greenChroma = -0.004f,
-                    lutIntensity = 1.000f,
-                    remarks = "Default Leica M240 Smooth Film camera recipe v1"
-                )
-
-                key.contains("kodak") || key.contains("dcspro") || key.contains("dcs_pro") -> ColorRecipeParams(
-                    contrast = 1.022f,
-                    saturation = 1.028f,
+                    contrast = 1.046f,
+                    saturation = 1.016f,
                     color = 0.022f,
                     shadows = -0.006f,
                     toneToe = 0.007f,
-                    toneShoulder = 0.004f,
-                    temperature = 0.010f,
-                    redChroma = 0.010f,
+                    toneShoulder = 0.010f,
+                    temperature = 0.003f,
                     orangeChroma = 0.014f,
-                    yellowChroma = 0.006f,
-                    blueChroma = -0.006f,
+                    greenChroma = -0.012f,
+                    cyanChroma = -0.006f,
+                    cyanLightness = -0.006f,
+                    blueChroma = -0.018f,
+                    blueLightness = -0.004f,
                     lutIntensity = 1.000f,
-                    remarks = "Default Kodak camera recipe v1"
+                    remarks = "Default M9 CCD camera recipe v2 - denser skin, calmer cyan-blue, softer backlit shoulder"
+                )
+
+                key.contains("m240") || key.contains("smoothfilm") || key.contains("smooth_film") -> ColorRecipeParams(
+                    contrast = 1.030f,
+                    saturation = 1.014f,
+                    color = 0.016f,
+                    shadows = -0.006f,
+                    toneToe = 0.005f,
+                    toneShoulder = 0.007f,
+                    temperature = 0.004f,
+                    skinChroma = 0.004f,
+                    orangeChroma = 0.010f,
+                    greenChroma = -0.006f,
+                    blueChroma = -0.008f,
+                    lutIntensity = 1.000f,
+                    remarks = "Default Leica M240 Smooth Film camera recipe v2 - smoother film density"
+                )
+
+                key.contains("kodak") || key.contains("dcspro") || key.contains("dcs_pro") -> ColorRecipeParams(
+                    contrast = 1.038f,
+                    saturation = 1.036f,
+                    color = 0.034f,
+                    shadows = -0.007f,
+                    toneToe = 0.009f,
+                    toneShoulder = 0.006f,
+                    temperature = 0.016f,
+                    redChroma = 0.014f,
+                    orangeChroma = 0.024f,
+                    yellowChroma = 0.010f,
+                    greenChroma = -0.006f,
+                    cyanChroma = -0.004f,
+                    blueChroma = -0.016f,
+                    blueLightness = -0.006f,
+                    lutIntensity = 1.000f,
+                    remarks = "Default Kodak camera recipe v2 - warmer highlight print density"
                 )
 
                 key.contains("hasselblad") || key.contains("hncs") -> ColorRecipeParams(
-                    contrast = 1.012f,
-                    saturation = 1.014f,
-                    color = 0.008f,
-                    shadows = -0.003f,
-                    toneToe = 0.003f,
-                    toneShoulder = 0.003f,
-                    temperature = -0.001f,
-                    skinChroma = -0.004f,
-                    greenHue = -0.004f,
-                    greenChroma = 0.004f,
-                    cyanChroma = 0.004f,
+                    contrast = 1.022f,
+                    saturation = 1.010f,
+                    color = 0.006f,
+                    shadows = -0.004f,
+                    toneToe = 0.005f,
+                    toneShoulder = 0.005f,
+                    temperature = -0.002f,
+                    skinChroma = -0.006f,
+                    orangeChroma = 0.004f,
+                    greenHue = -0.006f,
+                    greenChroma = 0.006f,
+                    cyanChroma = 0.006f,
+                    blueLightness = -0.004f,
                     lutIntensity = 1.000f,
-                    remarks = "Default Hasselblad HNCS camera recipe v1"
+                    remarks = "Default Hasselblad HNCS camera recipe v2 - cleaner neutral separation"
                 )
 
                 key.contains("satobi") -> ColorRecipeParams(
-                    contrast = 1.006f,
-                    saturation = 0.988f,
-                    color = -0.006f,
-                    shadows = -0.002f,
-                    toneToe = 0.003f,
-                    toneShoulder = 0.002f,
-                    temperature = 0.006f,
-                    fade = 0.006f,
-                    greenChroma = -0.012f,
-                    yellowChroma = -0.006f,
-                    blueChroma = -0.006f,
+                    contrast = 1.020f,
+                    saturation = 0.996f,
+                    color = 0.004f,
+                    shadows = -0.006f,
+                    toneToe = 0.006f,
+                    toneShoulder = 0.004f,
+                    temperature = 0.010f,
+                    fade = 0.003f,
+                    orangeChroma = 0.006f,
+                    yellowChroma = -0.008f,
+                    greenChroma = -0.014f,
+                    cyanChroma = -0.004f,
+                    blueChroma = -0.010f,
                     lutIntensity = 1.000f,
-                    remarks = "Default Pentax Satobi camera recipe v1"
+                    remarks = "Default Pentax Satobi camera recipe v2 - soft but less pale"
                 )
 
                 (key == "leica" || key.contains("leica_natural") || key.contains("leica_nat") || key.contains("leica natural") || key == "natural") -> ColorRecipeParams(
-                    contrast = 1.028f,
-                    saturation = 1.012f,
-                    color = 0.012f,
-                    shadows = -0.006f,
-                    toneToe = 0.006f,
-                    toneShoulder = 0.005f,
-                    temperature = 0.001f,
-                    orangeChroma = 0.006f,
-                    greenChroma = -0.006f,
+                    contrast = 1.044f,
+                    saturation = 1.022f,
+                    color = 0.020f,
+                    shadows = -0.010f,
+                    toneToe = 0.010f,
+                    toneShoulder = 0.007f,
+                    temperature = 0.002f,
+                    skinChroma = 0.004f,
+                    orangeChroma = 0.012f,
+                    greenChroma = -0.010f,
+                    cyanChroma = -0.004f,
+                    blueChroma = -0.010f,
                     lutIntensity = 1.000f,
-                    remarks = "Default Leica Natural camera recipe v1"
+                    remarks = "Default Leica Natural camera recipe v2 - cleaner pop and deeper mids"
                 )
 
                 else -> null

@@ -1477,35 +1477,24 @@ Java_com_hinnka_mycamera_processor_MultiFrameStacker_releaseRawStackerNative(
 }
 
 
-// LUT-Native base neutralizer v31 - base defuse pass.
-// Target: make None LUT read like a neutral camera negative instead of a cooked HDR phone render.
-// Notes:
-// - Much less lower-mid density and indoor mid-pop.
-// - Higher black lift prevents backlit interiors from crushing into dense phone shadows.
-// - Softer highlight shoulder reduces synthetic window/screen transitions.
-// - Lower shadow saturation avoids muddy, over-managed dark colors.
-// - LUT personality should be judged only after None looks natural.
+// LUT-Native base neutralizer v8b - Shadow Anchor Hybrid.
+// The Camera HAL can deliver already baked YUV: contrasty, saturated, sharpened.
+// This gently counteracts the baked phone look before the LUT/render pipeline stores the RGB base.
+// v8b keeps the v8 shadow/highlight anchor but restores a little color and warmth from v7:
+// - less milky lift than v7
+// - deeper lower mids / stronger shadow anchor
+// - stronger highlight restraint
+// - same shadow chroma cleanup
+// - same tiny midtone warmth protection
 static constexpr bool LUT_NATIVE_YUV_BASE_NEUTRAL = true;
-static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.928f;
-static constexpr float LUT_NATIVE_BASE_SATURATION = 0.560f;
-static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.340f;
+static constexpr float LUT_NATIVE_BASE_CONTRAST = 0.91f;
+static constexpr float LUT_NATIVE_BASE_SATURATION = 0.76f;
+static constexpr float LUT_NATIVE_SHADOW_SATURATION = 0.56f;
 static constexpr float LUT_NATIVE_SHADOW_CHROMA_THRESHOLD = 0.40f;
-static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.018f;
-static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.018f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.045f;
-static constexpr float LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE = 0.870f;
-static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.006f;
-static constexpr float LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH = 0.020f;
-static constexpr float LUT_NATIVE_TUNGSTEN_CHROMA_SCALE = 0.900f;
-static constexpr float LUT_NATIVE_CYAN_GUARD_STRENGTH = 0.008f;
-static constexpr float LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH = 0.004f;
-static constexpr float LUT_NATIVE_SKIN_ORANGE_COMPRESS = 0.010f;
-static constexpr float LUT_NATIVE_GREEN_SEPARATION_STRENGTH = 0.006f;
-static constexpr float LUT_NATIVE_INDOOR_MID_POP_STRENGTH = 0.003f;
-static constexpr float LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH = 0.003f;
-static constexpr float LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH = 0.004f;
-static constexpr float LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM = 0.012f;
-static constexpr float LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH = 0.002f;
+static constexpr float LUT_NATIVE_BASE_BLACK_LIFT = 0.012f;
+static constexpr float LUT_NATIVE_LOWER_MID_DENSITY = 0.034f;
+static constexpr float LUT_NATIVE_HIGHLIGHT_SHOULDER = 0.068f;
+static constexpr float LUT_NATIVE_WARMTH_PROTECT_STRENGTH = 0.012f;
 
 static inline float lutNativeClamp01(float v) {
   return std::max(0.0f, std::min(1.0f, v));
@@ -1521,54 +1510,33 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   }
 
   const float y = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-  const float maxRgb = std::max(r, std::max(g, b));
-  const float minRgb = std::min(r, std::min(g, b));
-  const float chroma = maxRgb - minRgb;
 
-  // V25 returns a little toward v23 density while keeping v24 backlight readability.
+  // Reduce baked contrast around middle gray, then apply a smaller black lift than v6.
   float yNeutral = (y - 0.5f) * LUT_NATIVE_BASE_CONTRAST + 0.5f;
   yNeutral += LUT_NATIVE_BASE_BLACK_LIFT * (1.0f - yNeutral);
   yNeutral = lutNativeClamp01(yNeutral);
 
-  // Lower-mid body: slightly stronger than v24 to recover camera-like anchor.
+  // Add density mainly in lower mids. This gives the base more body without simply crushing blacks.
   float lowerMidWeight = 1.0f - std::abs(yNeutral - 0.34f) / 0.34f;
   lowerMidWeight = lutNativeClamp01(lowerMidWeight);
   lowerMidWeight = lowerMidWeight * lowerMidWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_LOWER_MID_DENSITY * lowerMidWeight));
 
-  // Highlight shoulder: slightly firmer again to reduce the pale/veiled look.
+  // Gentle highlight shoulder. This reduces the clean/digital bright feel without making the image muddy.
   float highlightWeight = lutNativeClamp01((yNeutral - 0.62f) / 0.38f);
   highlightWeight = highlightWeight * highlightWeight;
   yNeutral = lutNativeClamp01(yNeutral - (LUT_NATIVE_HIGHLIGHT_SHOULDER * highlightWeight * (1.0f - yNeutral)));
 
+  // Reduce baked chroma while preserving hue relationships.
+  // In shadows, damp chroma more strongly to suppress green/magenta speckle without blurring luma detail.
   float shadowWeight = lutNativeClamp01((LUT_NATIVE_SHADOW_CHROMA_THRESHOLD - yNeutral) / LUT_NATIVE_SHADOW_CHROMA_THRESHOLD);
   shadowWeight = shadowWeight * shadowWeight;
 
-  float saturation = lutNativeMix(
+  const float saturation = lutNativeMix(
       LUT_NATIVE_BASE_SATURATION,
       LUT_NATIVE_SHADOW_SATURATION,
       shadowWeight
   );
-
-  // Reduce chroma in highlights a touch so 100% LUTs do not make bright windows/fabrics look synthetic.
-  saturation *= lutNativeMix(1.0f, LUT_NATIVE_HIGHLIGHT_CHROMA_SCALE, highlightWeight);
-
-  // Cyan-blue guard: keeps blue walls/shirts/window spill from getting too clean and phone-like.
-  const float cyanWeight = lutNativeClamp01(((g + b) * 0.5f - r) * 2.5f) * lutNativeClamp01((yNeutral - 0.18f) / 0.52f);
-  saturation *= (1.0f - LUT_NATIVE_CYAN_GUARD_STRENGTH * cyanWeight);
-
-  // Cool wall suppression: mostly low-chroma cyan/blue backgrounds, not warm subjects.
-  // This helps Natural/Kodak avoid the pale clinical wall cast without warming skin/fur globally.
-  const float coolWallWeight = cyanWeight * lutNativeClamp01((0.22f - chroma) / 0.22f) * lutNativeClamp01((yNeutral - 0.30f) / 0.45f);
-  saturation *= (1.0f - LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH * coolWallWeight);
-
-  // Bright fabric/toy chroma trim: local only, mostly for high-chroma mid/high areas such as pink shirts.
-  const float brightChromaWeight = lutNativeClamp01((yNeutral - 0.42f) / 0.36f) * lutNativeClamp01((chroma - 0.14f) / 0.30f);
-  saturation *= (1.0f - LUT_NATIVE_BRIGHT_FABRIC_CHROMA_TRIM * brightChromaWeight);
-
-  // Green separation: helps grass/foliage avoid grey collapse without making greens neon.
-  const float greenWeight = lutNativeClamp01((g - std::max(r, b)) * 3.0f) * lutNativeClamp01((yNeutral - 0.18f) / 0.55f);
-  saturation *= (1.0f + LUT_NATIVE_GREEN_SEPARATION_STRENGTH * greenWeight);
 
   const float dr = r - y;
   const float dg = g - y;
@@ -1578,65 +1546,9 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   g = lutNativeClamp01(yNeutral + dg * saturation);
   b = lutNativeClamp01(yNeutral + db * saturation);
 
-  const float coolWallBias = LUT_NATIVE_COOL_WALL_SUPPRESSION_STRENGTH * coolWallWeight;
-  r = lutNativeClamp01(r + coolWallBias * 0.18f);
-  g = lutNativeClamp01(g - coolWallBias * 0.06f);
-  b = lutNativeClamp01(b - coolWallBias * 0.24f);
-
-  // Recompute after base sat/luma changes.
-  float y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-
-  // Midtone subject presence: not a global brightness lift. It subtly separates midtones from flat phone HDR.
-  float midPresence = 1.0f - std::abs(y2 - 0.46f) * 2.4f;
-  midPresence = lutNativeClamp01(midPresence);
-  midPresence = midPresence * midPresence;
-  const float presence = LUT_NATIVE_SUBJECT_PRESENCE_STRENGTH * midPresence;
-  r = lutNativeClamp01((r - 0.5f) * (1.0f + presence) + 0.5f);
-  g = lutNativeClamp01((g - 0.5f) * (1.0f + presence) + 0.5f);
-  b = lutNativeClamp01((b - 0.5f) * (1.0f + presence) + 0.5f);
-
-  y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-
-  // Warm skin/fur approximation: local, conservative, and only active in low/mid luma.
-  float warmSubject = lutNativeClamp01((r - b) * 2.6f) * lutNativeClamp01((r - g + 0.08f) * 3.0f);
-  warmSubject *= lutNativeClamp01((0.72f - y2) / 0.60f);
-
-  // Face-shadow opener: restores a little air in dark warm subject tones without lifting the whole frame.
-  float faceShadow = warmSubject * lutNativeClamp01((0.50f - y2) / 0.38f);
-  const float faceOpen = LUT_NATIVE_FACE_SHADOW_OPEN_STRENGTH * faceShadow;
-  r = lutNativeClamp01(r + faceOpen * 1.00f);
-  g = lutNativeClamp01(g + faceOpen * 0.78f);
-  b = lutNativeClamp01(b + faceOpen * 0.52f);
-
-  // Backlit face helper: a stronger local version for very dark warm subject pixels.
-  // This is intentionally not a broad shadow lift; neutral/dark furniture and black fur stay anchored.
-  y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-  float backlitWarmShadow = warmSubject * lutNativeClamp01((0.34f - y2) / 0.24f);
-  const float backlitOpen = LUT_NATIVE_BACKLIT_FACE_OPEN_STRENGTH * backlitWarmShadow;
-  r = lutNativeClamp01(r + backlitOpen * 1.00f);
-  g = lutNativeClamp01(g + backlitOpen * 0.74f);
-  b = lutNativeClamp01(b + backlitOpen * 0.48f);
-
-  // Skin/fur orange compression: prevents the denser v19/v23 curve from turning warm subjects brown/orange.
-  y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-  float orangeBuild = warmSubject * lutNativeClamp01((r - g) * 3.0f) * lutNativeClamp01((y2 - 0.18f) / 0.46f);
-  const float orangeCompress = LUT_NATIVE_SKIN_ORANGE_COMPRESS * orangeBuild;
-  r = lutNativeClamp01(lutNativeMix(r, y2, orangeCompress));
-  g = lutNativeClamp01(lutNativeMix(g, y2, orangeCompress * 0.35f));
-
-  // Tungsten guard: reduces warm chroma stacking under low/mid luma warm light while keeping warmth.
-  y2 = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-  float tungstenWeight = warmSubject * lutNativeClamp01((0.66f - y2) / 0.50f);
-  const float tungstenScale = lutNativeMix(1.0f, LUT_NATIVE_TUNGSTEN_CHROMA_SCALE, LUT_NATIVE_TUNGSTEN_GUARD_STRENGTH * tungstenWeight);
-  const float tr = r - y2;
-  const float tg = g - y2;
-  const float tb = b - y2;
-  r = lutNativeClamp01(y2 + tr * tungstenScale);
-  g = lutNativeClamp01(y2 + tg * tungstenScale);
-  b = lutNativeClamp01(y2 + tb * tungstenScale);
-
-  // Tiny warmth protection in true midtones only.
-  float midtoneWeight = 1.0f - std::abs(y2 - 0.50f) * 2.0f;
+  // Tiny warmth protection in midtones only.
+  // Weaker than v6 so tungsten is protected without making the base too orange before LUTs.
+  float midtoneWeight = 1.0f - std::abs(yNeutral - 0.50f) * 2.0f;
   midtoneWeight = lutNativeClamp01(midtoneWeight);
   midtoneWeight = midtoneWeight * midtoneWeight;
 
@@ -1644,7 +1556,6 @@ static inline void applyLutNativeBaseNeutral(float &r, float &g, float &b) {
   r = lutNativeClamp01(r * (1.0f + warmBias));
   b = lutNativeClamp01(b * (1.0f - warmBias));
 }
-
 
 
 /**

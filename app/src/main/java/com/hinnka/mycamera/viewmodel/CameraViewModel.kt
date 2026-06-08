@@ -246,14 +246,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
 
     @OptIn(ExperimentalCoroutinesApi::class)
     var currentRecipeParams = currentLutId.flatMapLatest { id ->
-        // None must be a true camera pass-through. Do not read any persisted
-        // "none" recipe, because that causes hidden color processing even
-        // when the user selected no LUT.
-        if (id == "none") {
-            flowOf(ColorRecipeParams.DEFAULT)
-        } else {
-            contentRepository.lutManager.getColorRecipeParams(id)
-        }
+        contentRepository.lutManager.getColorRecipeParams(id)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -261,12 +254,7 @@ class CameraViewModel(application: Application) : AndroidViewModel(application) 
     )
 
     private fun recipeFlowFor(lutId: String): StateFlow<ColorRecipeParams> {
-        val source = if (lutId == "none") {
-            flowOf(ColorRecipeParams.DEFAULT)
-        } else {
-            contentRepository.lutManager.getColorRecipeParams(lutId)
-        }
-        return source.stateIn(
+        return contentRepository.lutManager.getColorRecipeParams(lutId).stateIn(
             viewModelScope,
             started = SharingStarted.Lazily,
             initialValue = ColorRecipeParams.DEFAULT,

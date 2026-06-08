@@ -733,11 +733,9 @@ class LutRenderer : GLSurfaceView.Renderer {
     }
 
     private fun hasBaselineLayer(): Boolean {
-        // Baseline should only exist when it is explicitly enabled by the caller.
-        // Non-default params alone are not enough, because persisted/default baseline
-        // params can silently pre-process the OES camera frame before the creative LUT.
         return (baselineLutEnabled && currentBaselineLutConfig != null) ||
-            (baselineColorRecipeEnabled && !baselineRecipeParams.isDefault())
+            baselineColorRecipeEnabled ||
+            !baselineRecipeParams.isDefault()
     }
 
     private fun hasCreativeLayer(): Boolean {

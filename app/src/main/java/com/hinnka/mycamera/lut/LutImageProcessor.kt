@@ -2699,25 +2699,15 @@ class LutImageProcessor {
                 // === LUT 处理（在色彩配方之后） ===
                 if (uLutEnabled && uLutIntensity > 0.0) {
                     bool isP3 = (uInputColorSpace == 1);
-                    vec3 lutSource = clamp(color.rgb, 0.0, 1.0);
-                    vec3 linearInput = srgbToLinear(lutSource);
+                    vec3 linearInput = srgbToLinear(color.rgb);
                     
                     if (isP3) {
                          linearInput = mat3(1.22486, -0.04205, -0.01974, -0.22471, 1.04192, -0.07865, 0.00000, 0.00013, 1.09837) * linearInput;
                     }
                     float effectiveLutIntensity = uLutIntensity * lutMaskWeight(uLutMaskType, linearInput);
 
-                    vec3 lutInColor;
-                    // Standard v1 .plut files such as Leica_M9_STD.plut default to
-                    // curve = SRGB / 0 and colorSpace = SRGB / 0. For those LUTs,
-                    // feed direct sRGB coordinates into the LUT instead of doing an
-                    // unnecessary sRGB -> linear -> sRGB round trip before lookup.
-                    if (uLutCurve == 0 && uLutColorSpace == 0) {
-                        lutInColor = lutSource;
-                    } else {
-                        vec3 colorSpaceRGB = applyLutColorSpace(linearInput, uLutColorSpace);
-                        lutInColor = clamp(applyLutCurve(colorSpaceRGB, uLutCurve), 0.0, 1.0);
-                    }
+                    vec3 colorSpaceRGB = applyLutColorSpace(linearInput, uLutColorSpace);
+                    vec3 lutInColor = applyLutCurve(colorSpaceRGB, uLutCurve);
                     
                     float scale = (uLutSize - 1.0) / uLutSize;
                     float offset = 1.0 / (2.0 * uLutSize);
